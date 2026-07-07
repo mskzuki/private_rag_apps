@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-from langfuse.decorators import observe, langfuse_context
+from langfuse import observe, get_client
 
 from private_rag_apps.core.db import get_db
 from private_rag_apps.retrieval.searcher import retrieve_context
@@ -21,12 +21,12 @@ def health_check():
 @observe()
 @app.post("/api/chat")
 def chat(request: ChatRequest, db: Session = Depends(get_db)):
-    langfuse_context.update_current_trace(name="chat_request", session_id=request.conversation_id)
+    get_client().update_current_span(name="chat_request", session_id=request.conversation_id)
     
     query = request.message
     
     # Retrieval
-    context_chunks = retrieve_context(db, query=query, top_k=5)
+    context_chunks = retrieve_context(db, query=query)
     
     # Generation
     response = generate_answer(query=query, context_chunks=context_chunks)

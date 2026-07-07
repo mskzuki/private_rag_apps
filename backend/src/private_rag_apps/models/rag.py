@@ -34,6 +34,7 @@ class Chunk(Base):
 
     __table_args__ = (
         Index("uq_chunk_source_position", "source_id", "position", unique=True),
+        Index("chunks_content_bigm", "content", postgresql_using="gin", postgresql_ops={"content": "gin_bigm_ops"}),
     )
 
 class IngestRun(Base):

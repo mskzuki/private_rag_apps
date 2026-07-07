@@ -1,6 +1,6 @@
 import anthropic
 from typing import List, Dict, Any
-from langfuse.decorators import observe, langfuse_context
+from langfuse import observe, get_client
 from private_rag_apps.core.config import settings
 from private_rag_apps.prompts.rag import RAG_SYSTEM_PROMPT, build_context_text
 
@@ -26,7 +26,7 @@ def generate_answer(query: str, context_chunks: List[Dict[str, Any]]):
     answer_text = response.content[0].text
     
     # Langfuse metrics
-    langfuse_context.update_current_observation(
+    get_client().update_current_span(
         usage={
             "input": response.usage.input_tokens,
             "output": response.usage.output_tokens

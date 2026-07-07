@@ -1,6 +1,6 @@
 import voyageai
 from sqlalchemy.orm import Session
-from langfuse.decorators import observe
+from langfuse import observe
 from private_rag_apps.models.rag import Source, Chunk, IngestRun
 from private_rag_apps.core.config import settings
 from .loader import load_directory
