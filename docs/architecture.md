@@ -1,6 +1,6 @@
 # Private RAG Apps — アーキテクチャ設計 (architecture.md)
 
-> requirements.md (v0.2) を「実装できる粒度」まで具体化する設計文書です。
+> requirements.md (v0.3) を「実装できる粒度」まで具体化する設計文書です。
 > DB の詳細（DDL・インデックス）は `db_design.md`、各機能の受け入れ条件は `docs/specs/` に分離します。
 > パラメータの数値は**チューニング前提のデフォルト値**です（設定で変更可能にする）。
 
@@ -13,7 +13,7 @@
 ```mermaid
 flowchart LR
     subgraph client[Frontend]
-      web[Next.js / Chat UI]
+      web[Next.js + assistant-ui<br/>Chat UI]
     end
     subgraph server[Backend]
       api[FastAPI / API + SSE]
@@ -223,6 +223,22 @@ sequenceDiagram
 | `done` | `{ "message_id": "…" }` |
 | `error` | `{ "message": "…" }` |
 
+### フロントエンド連携（assistant-ui カスタムランタイム）
+
+- チャット UI は **assistant-ui**（shadcn/ui + Tailwind ベース）を採用。CLI がコンポーネントを `web/` にコピーする方式で、コードは自プロジェクトの資産として持つ。
+- Vercel AI SDK のデータストリーム protocol には乗せず、**カスタムランタイム**で上記 SSE を直接受ける（自前 FastAPI SSE と最も相性が良いため）。
+- SSE イベント → assistant-ui ランタイムのマッピング:
+
+| SSE event | assistant-ui 側の扱い |
+|---|---|
+| `token` | 進行中アシスタントメッセージのテキストに逐次追記 |
+| `citations` | メッセージのカスタムパート（出典）として保持し、**出典カードを React コンポーネントで描画**（generative UI 的な使い方） |
+| `done` | メッセージを確定し `message_id` を紐付け |
+| `error` | エラー状態を表示（リトライ導線） |
+
+- 出典カードのクリックで元ソース情報（title / path / heading）を表示（FR-5）。
+- auto-scroll・retry・streaming 状態など手作りで壊れやすい部分は assistant-ui の実装に委ね、自前実装しない（NFR-7 保守性）。
+
 ---
 
 ## 8. 可観測性（Observability）
@@ -260,6 +276,7 @@ sequenceDiagram
 - **リランクを最終段に**: 一次検索の再現率を稼ぎ、精度はリランクで担保する定番構成。
 - **ジョブキューを持たない**: SaaS 同期がスコープ外のため、取り込みは CLI + プロセス内 BackgroundTasks で足りる。ARQ/Redis は SaaS コネクタ導入時に再検討（requirements §11）。
 - **更新は全置換**: source 更新時は chunks を全削除→再生成。部分更新より単純で整合を保ちやすい。
+- **チャット UI は assistant-ui**: バックエンド非依存のカスタムランタイムで自前 SSE を直接受けられ、shadcn/ui ベースでコードを資産化できる。streaming/auto-scroll/retry 等の定番 UX を再実装しない。ChatKit は不採用（OpenAI API への密結合・UI スクリプトが OpenAI CDN 依存で、Claude 構成・公開リポジトリに不向き）。
 
 ---
 
@@ -267,5 +284,6 @@ sequenceDiagram
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.3 | 2026-07-07 | チャット UI に **assistant-ui**（カスタムランタイム）を採用。§7 に SSE→ランタイムのマッピングと出典カードの generative UI 描画を追記。§1 構成図・§11 設計判断を更新。ChatKit 不採用の理由を明記 |
 | v0.2 | 2026-07-07 | requirements v0.2 追従: SaaS コネクタ・OAuth・connectors モジュール・worker/ARQ/Redis を削除。取り込みを CLI + BackgroundTasks に変更、`cli` モジュール追加。API から OAuth/connections 系を削除し sources/ingest 系に置換。全文検索を pg_bigm と明記。sync_runs → ingest_runs。Qdrant 比較を経た pgvector 採用理由を §11 に追記 |
 | v0.1 | 2026-07-04 | 初版（壁打ちドラフト） |

@@ -1,6 +1,6 @@
 # Private RAG Apps — 要件定義書 (requirements.md)
 
-> 壁打ちドラフト v0.2。技術選定は §7 の表で個別に差し替え可能な形にしています。
+> 壁打ちドラフト v0.3。技術選定は §7 の表で個別に差し替え可能な形にしています。
 > アーキテクチャの正は `architecture.md`、データモデルの正は `db_design.md`（本書は概要のみ記載）。
 
 ---
@@ -199,6 +199,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 | 言語 | Python 3.12 | GenAI エコシステムが最も厚い | — |
 | API | FastAPI + uvicorn | async / SSE ストリーミングが素直 | Litestar |
 | フロント | Next.js (App Router) | 既存スキル活用、ストリーミング UI、型共有 | Remix / SvelteKit |
+| チャット UI | **assistant-ui**（shadcn/ui ベース） | バックエンド非依存のカスタムランタイムで自前 SSE を直接受けられる。streaming/auto-scroll/retry を再実装不要。ChatKit は OpenAI API 密結合のため不採用 | Vercel AI SDK + AI Elements / 自前(shadcn) |
 | ストア | PostgreSQL + pgvector | **1 DB でベクトル + 全文** を扱え、ハイブリッド検索が組みやすい。運用が軽い | Qdrant / Weaviate |
 | 全文検索 | **pg_bigm**（bigram） | 標準 FTS は日本語の分かち書き不可。pg_bigm は拡張 1 つで日本語対応・軽量 | PGroonga（質重視） / 標準 FTS+形態素 |
 | 埋め込み | Voyage (voyage-4-lite / 1024次元) | 現行世代・多言語対応・最初の2億トークン無料・Claude と併用が自然 | voyage-4 / OpenAI text-embedding-3 |
@@ -280,5 +281,6 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.3 | 2026-07-07 | チャット UI ライブラリに assistant-ui を採用（§7 に行追加）。ChatKit は OpenAI API 密結合のため不採用 |
 | v0.2 | 2026-07-07 | SaaS コネクタ(Notion/Slack/Drive)・OAuth をスコープ外へ移動。シードコーパス+デモモード(FR-7)・データ管理UI(FR-8)を追加。全文検索を pg_bigm に統一(§7)。最小 Eval を M0 に前倒し(§9)、Langfuse 計装を M0 に前倒し(NFR-4)。NFR-8 再現性・§12 Definition of Success を追加。§6/§8 を概要+参照に縮約(正は architecture.md / db_design.md)。取り込みは CLI 実行とし ARQ/Redis を将来拡張へ |
 | v0.1 | 2026-07-04 | 初版(壁打ちドラフト) |
