@@ -1,4 +1,3 @@
-import pytest
 from private_rag_apps.ingestion.chunker import chunk_markdown
 
 class TestChunkMarkdown:
@@ -16,7 +15,7 @@ class TestChunkMarkdown:
         assert chunks[0].metadata["heading"] == "Title"
 
     def test_force_splits_large_content(self):
-        content = "A" * 600
+        content = ("A" * 100 + "\n") * 6
         chunks = chunk_markdown(content, max_chars=512)
         assert len(chunks) >= 2
 

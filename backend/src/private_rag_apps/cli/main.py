@@ -16,7 +16,7 @@ def main():
     subparsers = parser.add_subparsers(dest="command")
 
     # Ingest command
-    ingest_parser = subparsers.add_parser("ingest", help="Ingest documents from corpus")
+    subparsers.add_parser("ingest", help="Ingest documents from corpus")
 
     args = parser.parse_args()
 

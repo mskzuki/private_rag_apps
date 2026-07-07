@@ -14,13 +14,8 @@ def retrieve_context(
     *,
     strategy: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Retrieve context chunks for the given query.
-
-    Args:
-        db: Database session.
-        query: User question.
-        strategy: Override retrieval strategy (default: ``settings.retrieval_strategy``).
-            One of ``"vector"``, ``"hybrid"``, ``"hybrid_rerank"``.
+    """与えられたクエリに対して関連するコンテキスト（チャンク）を取得する。
+    設定された戦略（vector, hybrid, hybrid_rerank）に応じて検索処理を振り分ける。
     """
     strategy = strategy or settings.retrieval_strategy
 
@@ -48,17 +43,21 @@ def retrieve_context(
 # ---------------------------------------------------------------------------
 
 @observe(name="embed_query")
+@observe(name="embed_query")
 def _embed_query(query: str) -> List[float]:
+    """検索クエリを埋め込みモデル(Voyage)を用いてベクトル化する"""
     voyage_client = voyageai.Client(api_key=settings.voyage_api_key)
-    return voyage_client.embed(
+    from typing import cast
+    return cast(List[float], voyage_client.embed(
         [query], model="voyage-4-lite", input_type="query",
-    ).embeddings[0]
+    ).embeddings[0])
 
 
 @observe(name="vector_search")
 def _vector_search(
     db: Session, emb: List[float], top_k: int,
 ) -> List[Dict[str, Any]]:
+    """コサイン類似度を用いた純粋なベクトル検索（pgvector）を実行し、上位結果を返す"""
     stmt = (
         select(Chunk, Source)
         .join(Source, Chunk.source_id == Source.id)
@@ -67,7 +66,7 @@ def _vector_search(
         .limit(top_k)
     )
     results = db.execute(stmt).all()
-    return _format_chunks(results)
+    return _format_chunks([(row[0], row[1]) for row in results])
 
 
 @observe(name="hybrid_search")
@@ -75,17 +74,11 @@ def _hybrid_search(
     db: Session,
     query: str,
     emb: List[float],
-    cand_k: int,
+    candidate_k: int,
     rrf_k: int,
-    fuse_k: int,
+    top_k: int,
 ) -> List[Dict[str, Any]]:
-    """Execute hybrid search via RRF fusion CTE.
-
-    Note: ``vector_search`` and ``fts_search`` are executed inside a single
-    CTE statement so they cannot be split into separate Langfuse spans.
-    The ``rrf_fuse`` span wraps the entire SQL execution and records the
-    number of fused candidates as metadata.
-    """
+    """ベクトル検索と全文検索（pg_bigm）を並行して実行し、Reciprocal Rank Fusion (RRF) を用いてスコアを融合して上位結果を返す"""
     sql = text("""
     WITH vector_search AS (
         SELECT c.id,
@@ -121,9 +114,9 @@ def _hybrid_search(
         result_ids = db.execute(sql, {
             "q_embedding": emb_str,
             "q_text": query,
-            "cand_k": cand_k,
+            "cand_k": candidate_k,
             "rrf_k": rrf_k,
-            "fuse_k": fuse_k,
+            "fuse_k": top_k,
         }).scalars().all()
 
         client.update_current_span(
@@ -157,10 +150,7 @@ def _rerank(
     chunks: List[Dict[str, Any]],
     top_k: int,
 ) -> List[Dict[str, Any]]:
-    """Rerank chunks using Voyage rerank-2.5.
-
-    Falls back to RRF-ordered ``chunks[:top_k]`` if the API call fails.
-    """
+    """Voyage AIのリランクモデルを用いて、検索で得られたチャンク群をクエリとの関連度順に再スコアリング（リランク）する"""
     if not chunks:
         return []
 
@@ -176,10 +166,12 @@ def _rerank(
 
         # Record usage if available
         try:
-            client = get_client()
-            client.update_current_span(
-                usage={"total": rerank_result.total_tokens},
-                model="rerank-2.5",
+            get_client().update_current_generation(
+                usage_details={
+                    "input": rerank_result.total_tokens,
+                    "output": 0
+                },
+                model="rerank-2.5"
             )
         except (AttributeError, Exception):
             pass  # SDK version may not expose total_tokens or client may be disabled

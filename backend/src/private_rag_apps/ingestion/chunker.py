@@ -7,10 +7,13 @@ class ChunkResult:
         self.metadata = metadata
 
 def chunk_markdown(content: str, max_chars: int = 512) -> List[ChunkResult]:
+    """Markdownドキュメントを見出し（#）ベースで意味的なチャンクに分割する。
+    ただし、max_chars を超える場合は強制的に分割する。
+    """
     # Very basic chunking by heading for M0.
     lines = content.split('\n')
     chunks = []
-    current_chunk = []
+    current_chunk: List[str] = []
     current_length = 0
     current_heading = ""
 

@@ -1,0 +1,13 @@
+{
+  "permissions": {},
+  "deny": {},
+  "env": {
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "70"
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true
+  },
+  "langage": "japanese"
+}

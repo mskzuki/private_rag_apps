@@ -47,3 +47,25 @@ class IngestRun(Base):
     error: Mapped[Optional[str]]
     started_at: Mapped[datetime.datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
     finished_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP(timezone=True))
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    title: Mapped[str] = mapped_column(server_default="", nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    conversation_id: Mapped[UUID] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False)
+    role: Mapped[str] = mapped_column(nullable=False)
+    content: Mapped[str] = mapped_column(nullable=False)
+    citations: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    created_at: Mapped[datetime.datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("messages_conversation", "conversation_id", "created_at"),
+    )

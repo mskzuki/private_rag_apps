@@ -13,7 +13,8 @@ class Document:
         self.content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
 
 def load_directory(directory: str) -> List[Document]:
-    docs = []
+    """指定されたディレクトリから再帰的にマークダウンおよびテキストファイルを読み込み、Documentオブジェクトのリストを返す"""
+    docs: List[Document] = []
     base_path = Path(directory)
     if not base_path.exists() or not base_path.is_dir():
         return docs

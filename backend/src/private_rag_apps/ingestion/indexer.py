@@ -9,6 +9,7 @@ import datetime
 
 @observe(name="ingest_run")
 def run_ingestion(db: Session, trigger: str = "cli"):
+    """ローカルコーパスを読み込み、チャンキング・ベクトル化を行ってDBへ登録（upsert）する一連のインジェスト処理を実行する"""
     run = IngestRun(trigger=trigger, status="running")
     db.add(run)
     db.commit()
@@ -92,5 +93,7 @@ def run_ingestion(db: Session, trigger: str = "cli"):
 
 @observe(name="embed_documents")
 def _embed_documents(texts: list[str]) -> list[list[float]]:
+    """チャンク化されたテキストのリストをVoyage AIを用いて一括でベクトル化（埋め込み）する"""
     voyage_client = voyageai.Client(api_key=settings.voyage_api_key)
-    return voyage_client.embed(texts, model="voyage-4-lite", input_type="document").embeddings
+    from typing import cast
+    return cast(list[list[float]], voyage_client.embed(texts, model="voyage-4-lite", input_type="document").embeddings)

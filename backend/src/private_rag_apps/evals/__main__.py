@@ -73,7 +73,7 @@ def run_eval() -> None:
         print(f"Running Eval on {total} questions...\n")
 
         for item in dataset:
-            q_id = item["id"]
+            item["id"]
             question = item["question"]
             expected_sources = item["expected_sources"]
 

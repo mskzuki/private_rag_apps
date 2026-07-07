@@ -16,6 +16,12 @@ class Settings(BaseSettings):
     rrf_k: int = 60
     fuse_k: int = 40
     rerank_top_k: int = 8
+    # M2 Chat & Streaming Settings
+    condense_model: str = "claude-3-haiku-20240307"
+    condense_history_turns: int = 5
+    chat_history_token_budget: int = 1000
+    sse_keepalive_sec: int = 15
+    title_max_chars: int = 40
 
     model_config = SettingsConfigDict(
         env_file=".env",

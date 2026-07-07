@@ -4,6 +4,7 @@ RAG_SYSTEM_PROMPT = """あなたはアシスタントです。ユーザーの質
 回答は日本語で行ってください。"""
 
 def build_context_text(chunks: list[dict]) -> str:
+    """検索で得られたチャンク群のリストから、LLMのプロンプトに埋め込むためのコンテキスト（文脈）文字列を構築する"""
     context_lines = []
     for i, chunk in enumerate(chunks, 1):
         context_lines.append(f"[{i}] {chunk['title']}\n{chunk['content']}")
