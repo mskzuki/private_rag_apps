@@ -1,0 +1,26 @@
+[project]
+name = "private_rag_apps"
+version = "0.1.0"
+description = "Private RAG Apps Backend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn>=0.30.1",
+    "pydantic-settings>=2.3.4",
+    "sqlalchemy>=2.0.31",
+    "psycopg[binary]>=3.2.1",
+    "pgvector>=0.3.1",
+    "alembic>=1.13.2",
+    "anthropic>=0.30.1",
+    "voyageai>=0.2.3",
+    "langfuse>=2.38.0",
+    "pyyaml>=6.0",
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100

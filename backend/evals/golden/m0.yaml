@@ -1,0 +1,30 @@
+- id: q01
+  question: 全文検索に使っている拡張は何?
+  expected_sources: ["db_design.md", "requirements.md"]
+- id: q02
+  question: 埋め込みモデルと次元は?
+  expected_sources: ["requirements.md", "db_design.md"]
+- id: q03
+  question: ベクトルインデックスの種類とパラメータは?
+  expected_sources: ["db_design.md"]
+- id: q04
+  question: ハイブリッド検索で結果を融合する手法は?
+  expected_sources: ["architecture.md", "db_design.md"]
+- id: q05
+  question: なぜ Qdrant ではなく Postgres を選んだ?
+  expected_sources: ["architecture.md"]
+- id: q06
+  question: チャットUIに採用したライブラリと、ChatKit を選ばなかった理由は?
+  expected_sources: ["requirements.md", "architecture.md"]
+- id: q07
+  question: ドキュメント更新時のチャンクの扱いは?
+  expected_sources: ["architecture.md", "db_design.md"]
+- id: q08
+  question: LLM 呼び出しを許可されているモジュールは?
+  expected_sources: ["AGENTS.md"]
+- id: q09
+  question: v1 でスコープ外にした主要項目は?
+  expected_sources: ["requirements.md"]
+- id: q10
+  question: 取り込みの実行経路（CLIとAPI）はどうなっている?
+  expected_sources: ["architecture.md"]
