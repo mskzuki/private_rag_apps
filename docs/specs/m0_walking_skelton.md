@@ -160,15 +160,15 @@ LIMIT 5;
 
 | ID | タスク | 完了条件 |
 |---|---|---|
-| **M0-1** | インフラ: docker-compose（Postgres + pgvector + pg_bigm イメージ）、`.env.example`、`core/config.py` | `docker compose up` で DB 起動、設定が読める |
-| **M0-2** | DB: Alembic `0001_init`（拡張 + sources + chunks + ingest_runs + HNSW/索引） | `make migrate` が通り、テーブル・索引が作られる |
-| **M0-3** | 取り込み: `.md` ローダー + 見出しチャンカー + voyage 埋め込み(document) + path冪等 upsert + `ingest_runs` 記録。CLI `ingest`/`demo`。`seed/corpus/` に設計文書配置 | `make demo` で S1 が成立 |
-| **M0-4** | 検索: query 埋め込み(query) + ベクトル検索(top-5) | 与えたクエリで関連チャンクが返る（統合テスト） |
-| **M0-5** | 生成: `prompts/` + Claude 非ストリーム呼び出し + 引用整形 + not-found フォールバック | S2 / S3 が成立 |
-| **M0-6** | API: `POST /api/chat`(JSON) + `GET /health` を retrieval/generation に配線 | curl で S2 / S3 が確認できる |
-| **M0-7** | 可観測性: Langfuse 計装（3スパン + token/cost） | S4 が成立 |
-| **M0-8** | Eval: `evals/golden/m0.yaml`(10問) + Recall@5 ハーネス + `make eval` | S5 が成立、ベースライン記録 |
-| **M0-9** | テスト + Make ターゲット + README クイックスタート雛形 | `make lint`/`make test` が通る |
+| **M00-1** | インフラ: docker-compose（Postgres + pgvector + pg_bigm イメージ）、`.env.example`、`core/config.py` | `docker compose up` で DB 起動、設定が読める |
+| **M00-2** | DB: Alembic `0001_init`（拡張 + sources + chunks + ingest_runs + HNSW/索引） | `make migrate` が通り、テーブル・索引が作られる |
+| **M00-3** | 取り込み: `.md` ローダー + 見出しチャンカー + voyage 埋め込み(document) + path冪等 upsert + `ingest_runs` 記録。CLI `ingest`/`demo`。`seed/corpus/` に設計文書配置 | `make demo` で S1 が成立 |
+| **M00-4** | 検索: query 埋め込み(query) + ベクトル検索(top-5) | 与えたクエリで関連チャンクが返る（統合テスト） |
+| **M00-5** | 生成: `prompts/` + Claude 非ストリーム呼び出し + 引用整形 + not-found フォールバック | S2 / S3 が成立 |
+| **M00-6** | API: `POST /api/chat`(JSON) + `GET /health` を retrieval/generation に配線 | curl で S2 / S3 が確認できる |
+| **M00-7** | 可観測性: Langfuse 計装（3スパン + token/cost） | S4 が成立 |
+| **M00-8** | Eval: `evals/golden/m0.yaml`(10問) + Recall@5 ハーネス + `make eval` | S5 が成立、ベースライン記録 |
+| **M00-9** | テスト + Make ターゲット + README クイックスタート雛形 | `make lint`/`make test` が通る |
 
 ---
 
