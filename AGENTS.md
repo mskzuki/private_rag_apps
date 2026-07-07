@@ -1,0 +1,183 @@
+# AGENTS.md
+
+> このファイルは **AI コーディングエージェント（Claude Code 等）** がこのリポジトリで作業する際のガイドです。
+> 人間向けの概要は `README.md`、要件は `docs/requirements.md`、詳細仕様は `docs/specs/` を参照してください。
+> **矛盾がある場合は `docs/specs/` の個別仕様が最優先**、次に本ファイル、最後に一般的な慣習の順で従ってください。
+
+---
+
+## 1. プロジェクト概要
+
+Private RAG Apps は、ローカルのプライベートドキュメントコーパス（Markdown / テキスト）を取り込み、ハイブリッド検索 + リランクで出典付き回答を返す RAG チャットアプリケーション。単一ユーザー向け。技術ショーケースとして、**品質評価（Eval）・可観測性・クリーンな境界**を重視する。
+
+SaaS コネクタ（Notion/Slack/Drive）・OAuth・マルチユーザー・ACL は **v1 スコープ外**（requirements.md §11）。
+
+---
+
+## 2. 技術スタック
+
+- **Backend**: Python 3.12, FastAPI, uvicorn（`backend/`, パッケージ名 `private_rag_apps`）
+- **Store**: PostgreSQL + pgvector + **pg_bigm**（ベクトル + 日本語全文）, Alembic
+- **AI**: Anthropic Claude（生成）, Voyage voyage-4-lite / rerank-2.5（埋め込み・リランク）
+- **Observability**: Langfuse
+- **Frontend**: Next.js (App Router), TypeScript（`web/`）
+- **取り込み**: CLI（`make ingest` / `make demo`）+ API からの BackgroundTasks。ジョブキューは無い
+- **Package管理**: uv（Python）, pnpm（web）
+
+---
+
+## 3. ディレクトリ構成と依存方向
+
+```
+.
+├── AGENTS.md
+├── README.md
+├── Makefile
+├── docker-compose.yml
+├── docs/
+│   ├── requirements.md
+│   ├── architecture.md
+│   ├── db_design.md
+│   └── specs/                 # スペック駆動開発。実装前にここを更新する
+├── seed/                      # シードコーパス（デモモード & Eval 兼用）
+├── backend/
+│   ├── src/private_rag_apps/
+│   │   ├── core/              # 設定・DB接続・テレメトリ（共有基盤）
+│   │   ├── models/            # SQLAlchemy + Pydantic
+│   │   ├── cli/               # ingest / demo コマンド（ingestion を呼ぶ薄い層）
+│   │   ├── ingestion/         # コーパス読込 → 正規化 → チャンキング → 埋め込み → upsert
+│   │   ├── retrieval/         # hybrid search (pgvector + pg_bigm) → RRF → rerank
+│   │   ├── generation/        # クエリ書換 → プロンプト組立 → LLM呼び出し → 引用付与
+│   │   ├── prompts/           # プロンプトはここに集約（コードにハードコードしない）
+│   │   └── api/               # FastAPI ルート・SSE・BackgroundTasks
+│   ├── tests/
+│   ├── evals/                 # ゴールデンデータセットと評価ハーネス
+│   └── pyproject.toml
+└── web/                       # Next.js チャット UI
+```
+
+### 依存方向のルール（守ること）
+
+- `api → generation → retrieval` の一方向。**逆流させない**。
+- `ingestion` はストアに書き込む側。`retrieval` はストアから読む側。両者を直接依存させない。
+- `cli` は `ingestion` を呼ぶ薄い層。ロジックを持たない。
+- `core` は全レイヤから参照される共有基盤。`core` から上位レイヤを import しない。
+- **LLM 呼び出しは `generation/`（と `evals/`）のみ**。
+- **埋め込み呼び出しは `ingestion/`（インデックス時）と `retrieval/`（クエリ時）のみ**。
+- **リランク呼び出しは `retrieval/` のみ**。
+- ローカル FS（コーパス）へのアクセスは `ingestion/` のみ。
+
+---
+
+## 4. セットアップ
+
+```bash
+make setup        # uv sync + pnpm install + .env 生成 + DB 起動
+make migrate      # Alembic マイグレーション適用
+make demo         # シードコーパス取り込み → すぐチャット可能
+```
+
+- 環境変数は `.env`（`.env.example` からコピー）。**`.env` はコミットしない**。
+- 必要なキー: `ANTHROPIC_API_KEY`, `VOYAGE_API_KEY`, `LANGFUSE_*`, `DATABASE_URL`, `CORPUS_DIR`。
+
+---
+
+## 5. コマンド（Makefile 経由で実行すること）
+
+| コマンド | 内容 |
+|---|---|
+| `make api` | API 起動（`uv run uvicorn private_rag_apps.api.main:app --reload`） |
+| `make web` | フロント起動（`pnpm --dir web dev`） |
+| `make ingest CORPUS=path/` | コーパス取り込み（CLI） |
+| `make demo` | シードコーパスで即デモ可能な状態にする |
+| `make test` | `uv run pytest` |
+| `make lint` | `uv run ruff check . && uv run mypy .` |
+| `make fmt` | `uv run ruff format .` |
+| `make eval` | `uv run python -m private_rag_apps.evals` |
+| `make migrate` | `uv run alembic upgrade head` |
+
+> 個別に `pip install` / `python xxx.py` を叩かず、原則 Make ターゲット・`uv run` を使うこと。
+
+---
+
+## 6. コーディング規約
+
+- **フォーマット/Lint**: ruff（`make fmt` / `make lint`）。独自スタイルを持ち込まない。
+- **型**: mypy を通す。**public 関数には型注釈必須**。`Any` は原則使わない。
+- **async**: I/O（DB・HTTP・LLM）は async で書く。同期版と混在させない。
+- **設定**: 値のハードコード禁止。設定は `core/config.py`（pydantic-settings）経由。
+- **プロンプト**: コード中に文字列で埋め込まない。`prompts/` に置き、バージョンを意識する。
+- **命名**: レイヤ名・要件 ID（FR-x / NFR-x）と対応が付く名前を使う。
+
+---
+
+## 7. RAG 特有のルール（重要）
+
+- **生成は取得コンテキストにのみ基づく**。コンテキスト外の主張を書かせない。
+- **回答には必ず出典（citation）を付ける**。出典を辿れない回答は不可。
+- コンテキストに答えが無い場合は「見つからない」を返す実装にする（でっち上げない）。
+- **埋め込みモデル / チャンキング戦略を変更したら、再インデックス + `make eval` が必須**。
+  影響範囲（既存インデックスとの非互換）を PR に明記する。
+- **プロンプトを変更したら `make eval` を実行**し、スコアの劣化がないか確認する。
+- **最小 Eval は M0 から存在する**（requirements §9）。「Eval がまだ無いので計測せず変更する」は M0 完了以降は認められない。
+- すべての LLM / 埋め込み / リランク呼び出しは **Langfuse トレースに記録**されるように実装する（トレース漏れを作らない）。計装は M0 の骨格段階から配線する。
+
+---
+
+## 8. テスト方針
+
+- **ユニット**: チャンキング・RRF 融合・引用整形など純粋ロジックを中心に。
+- **統合**: 取り込み → 検索 → 生成のパスを、テスト用 DB（pgvector + pg_bigm）で検証。
+- **LLM / 外部 API 呼び出しはモック / 記録再生**する。テストで実課金 API を叩かない。
+- **Eval はテストとは別物**。合否ではなくスコア回帰の監視に使う（`make eval`）。
+- 新機能・バグ修正には対応するテストを付ける。
+
+---
+
+## 9. Git / PR 規約
+
+- コミットは **Conventional Commits**（`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`）。
+- 1 PR = 1 関心事。レイヤをまたぐ大改修は分割する。
+- PR 説明に **対応する要件 ID（FR-x / NFR-x）** と、RAG 挙動を変える場合は **Eval スコアの before/after** を記載する。
+
+---
+
+## 10. Definition of Done（この全てを満たしてから完了とする）
+
+- [ ] `make lint` と `make test` が通る
+- [ ] 変更に対応するテストがある
+- [ ] RAG 挙動（検索・プロンプト・チャンキング・埋め込み）を変えた場合、`make eval` を実行しスコアを PR に記載した
+- [ ] 依存方向ルール（§3）を破っていない
+- [ ] シークレット・実データをコミットしていない
+- [ ] 関連する `docs/specs/` を更新した
+
+---
+
+## 11. DO NOT（やってはいけないこと）
+
+- ❌ シークレット（API キー）・個人の実データをコミットする（同梱してよいのは `seed/` のシードコーパスのみ）
+- ❌ プロンプトをコードにハードコードする（`prompts/` を使う）
+- ❌ Eval を回さずにプロンプト / チャンキング / 埋め込みを変更する（M0 完了以降）
+- ❌ 依存方向（§3）に反する import を書く（例: `retrieval` から `ingestion` を呼ぶ）
+- ❌ `generation` 以外の層で LLM を直接呼ぶ
+- ❌ テストで実課金の外部 API を叩く
+- ❌ **仕様（`docs/specs/`）に無い機能を勝手に追加する**。必要と判断したら、まず仕様案を提示して合意を得る
+- ❌ スコープ外（SaaS コネクタ / OAuth / マルチユーザー / ACL / エージェンティック RAG / PDF パース。requirements.md §11 参照）を v1 に混ぜ込む
+- ❌ ジョブキュー（Redis/ARQ/Celery 等)を導入する（v1 は CLI + BackgroundTasks で足りる設計判断済み）
+
+---
+
+## 12. スペック駆動開発について
+
+- 実装の前に `docs/specs/` の該当仕様を読み、必要なら**先に仕様を更新**してから実装する。
+- 仕様と実装が食い違ったら、**勝手に実装側へ寄せず**、差分を指摘して合意を取る。
+- 大きな設計判断は仕様に根拠を残す（後からレビュアーが辿れるように）。
+
+---
+
+## 変更履歴
+
+| version | 日付 | 変更 |
+|---|---|---|
+| v0.2 | 2026-07-07 | requirements v0.2 追従: connectors モジュール・ARQ/Redis worker・OAuth 関連を削除。`cli/` と `seed/` を構成に追加、`make ingest`/`make demo` に置換。DO NOT にジョブキュー導入禁止・スコープ外項目の更新。最小 Eval が M0 から存在する前提を §7 に明記 |
+| v0.1 | 2026-07-04 | 初版（壁打ちドラフト） |
