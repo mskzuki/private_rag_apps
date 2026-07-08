@@ -1,6 +1,6 @@
 # Private RAG Apps — アーキテクチャ設計 (architecture.md)
 
-> requirements.md (v0.3) を「実装できる粒度」まで具体化する設計文書です。
+> requirements.md (v0.4) を「実装できる粒度」まで具体化する設計文書です。
 > DB の詳細（DDL・インデックス）は `db_design.md`、各機能の受け入れ条件は `docs/specs/` に分離します。
 > パラメータの数値は**チューニング前提のデフォルト値**です（設定で変更可能にする）。
 
@@ -119,11 +119,11 @@ sequenceDiagram
     end
     R->>R: RRF 融合 → rerank(Voyage) → top_k
     R-->>API: コンテキスト(チャンク + 出典)
+    API-->>U: SSE: citations（番号付き出典。生成前に 1 度）
     API->>G: generate(query, context, history)
     G->>LLM: プロンプト(出典必須・不知許容)
     LLM-->>API: トークン列 (stream)
     API-->>U: SSE: token...token
-    API-->>U: SSE: citations
     API-->>U: SSE: done
 ```
 
@@ -145,6 +145,8 @@ sequenceDiagram
 - 最終 top_k の合計トークンが上限を超える場合は末尾を落とす
 - ベクトル/全文どちらか 0 件でも動作する（片側だけで融合）
 - 検索結果 0 件のときは生成をスキップし「見つからない」を返す（NFR-6）
+
+- **評価/診断モード（M3）**: `evals/` 向けに、RRF 融合直後のランキングとリランク後のランキングの**両方**を返すインターフェースを持つ（リランク寄与の計測用。evals 側で検索ロジックを再実装しない。`docs/specs/m3_eval_expansion.md` §4.2）
 
 > pg_bigm を PGroonga に差し替える場合、影響範囲は `retrieval` の全文検索クエリと DB 拡張のみ（`db_design.md` §2）。
 
@@ -207,6 +209,7 @@ sequenceDiagram
 | メソッド | パス | 用途 |
 |---|---|---|
 | POST | `/api/chat` | チャット（M2 以降 **SSE ストリーム**。M0〜M1 は JSON）。body: `{conversation_id?, message}` |
+| POST | `/api/conversations` | 会話作成（assistant-ui `initialize()` 対応。M2） |
 | GET | `/api/conversations` | 会話一覧 |
 | GET | `/api/conversations/{id}` | 会話詳細（履歴） |
 | GET | `/api/sources` | 取り込み済みソース一覧（パス・タイトル・チャンク数・取り込み日時） |
@@ -216,16 +219,16 @@ sequenceDiagram
 
 ### SSE イベント（`/api/chat`, M2〜）
 
-| event | data |
-|---|---|
-| `token` | `{ "delta": "…" }` 逐次トークン |
-| `citations` | 出典配列（§5） |
-| `done` | `{ "message_id": "…" }` |
-| `error` | `{ "message": "…" }` |
+| event | data | 送出タイミング |
+|---|---|---|
+| `citations` | 番号付き出典配列（§5） | **rerank 完了直後・最初の `token` の前に 1 度**（`[n]`→出典の対応は生成前に確定するため） |
+| `token` | `{ "delta": "…" }` 逐次トークン | 生成トークンごと |
+| `done` | `{ "message_id": "…", "conversation_id": "…" }` | 正常終了時（user + assistant を一括保存後） |
+| `error` | `{ "message": "…" }` | 回復不能な失敗時（そのターンは非保存） |
 
 ### フロントエンド連携（assistant-ui カスタムランタイム）
 
-- チャット UI は **assistant-ui**（shadcn/ui + Tailwind ベース）を採用。CLI がコンポーネントを `web/` にコピーする方式で、コードは自プロジェクトの資産として持つ。
+- チャット UI は **assistant-ui**（shadcn/ui + Tailwind ベース）を採用。CLI がコンポーネントを `frontend/` にコピーする方式で、コードは自プロジェクトの資産として持つ。
 - Vercel AI SDK のデータストリーム protocol には乗せず、**カスタムランタイム**で上記 SSE を直接受ける（自前 FastAPI SSE と最も相性が良いため）。
 - SSE イベント → assistant-ui ランタイムのマッピング:
 
@@ -237,6 +240,8 @@ sequenceDiagram
 | `error` | エラー状態を表示（リトライ導線） |
 
 - 出典カードのクリックで元ソース情報（title / path / heading）を表示（FR-5）。
+- **実装注意（累積 yield）**: assistant-ui の `ChatModelAdapter.run` は各ステップで**完全な content を yield する契約**のため、出典パートは**累積 content に一度だけ追加して保持し続ける**（チャンクごとに content を作り直すと出典が消える。`docs/specs/m2_streaming_and_history.md` §5.2）。
+- 最終表示は本文に出現した `[n]` のカードのみ。citations に対応の無い**範囲外 `[n]` はリンク化・カード化しない**（同 §4.5/§5.3）。
 - auto-scroll・retry・streaming 状態など手作りで壊れやすい部分は assistant-ui の実装に委ね、自前実装しない（NFR-7 保守性）。
 
 ---
@@ -246,6 +251,8 @@ sequenceDiagram
 - **1 チャットリクエスト = 1 Langfuse トレース**。span: `condense` → `embed_query` → `retrieve`（vector/fts）→ `rerank` → `generate`
 - 各 LLM/埋め込み/リランク呼び出しでトークン数・コスト・レイテンシを記録
 - 取り込み実行も trace 化（埋め込みコストの可視化）
+- **Eval 実行**（`make eval`）も trace 化し、judge 含むコストを記録（M3。judge の LLM 呼び出しは `evals/` から行う。AGENTS.md §3）
+- `LANGFUSE_*` 未設定時は計装を **no-op** とし動作を妨げない（requirements NFR-4/NFR-8）
 - **計装は M0 の骨格段階で配線する**（requirements NFR-4。後付けはトレース漏れを生む）
 
 ---
@@ -253,7 +260,7 @@ sequenceDiagram
 ## 9. 設定とシークレット
 
 - `core/config.py`（pydantic-settings）で一元管理。値のハードコード禁止
-- 必須キー: `ANTHROPIC_API_KEY` / `VOYAGE_API_KEY` / `LANGFUSE_*` / `DATABASE_URL` / `CORPUS_DIR`
+- 必須キー: `ANTHROPIC_API_KEY` / `VOYAGE_API_KEY` / `DATABASE_URL` / `CORPUS_DIR`（`LANGFUSE_*` は**任意**・未設定時は計装 no-op。§8）
 
 ---
 
@@ -284,6 +291,7 @@ sequenceDiagram
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.4 | 2026-07-08 | M2/M3 スペック追従 + 全体レビュー反映: §3.2/§7 の SSE を M2 確定版へ（**citations を生成前送出**・`done` に `conversation_id`・エラーターン非保存）。§7 API 表に `POST /api/conversations` 追加、assistant-ui に**累積 yield の注意**と**範囲外 `[n]` 無視**を追記。§4 に `retrieval` の**評価/診断モード**（融合前/後の両ランキング）を追加。§8 に Eval/judge のトレースを追記。`LANGFUSE_*` を任意化（§8/§9）。`web/` → `frontend/`（AGENTS v0.5 追従）。ヘッダの requirements 参照を v0.4 へ |
 | v0.3 | 2026-07-07 | チャット UI に **assistant-ui**（カスタムランタイム）を採用。§7 に SSE→ランタイムのマッピングと出典カードの generative UI 描画を追記。§1 構成図・§11 設計判断を更新。ChatKit 不採用の理由を明記 |
 | v0.2 | 2026-07-07 | requirements v0.2 追従: SaaS コネクタ・OAuth・connectors モジュール・worker/ARQ/Redis を削除。取り込みを CLI + BackgroundTasks に変更、`cli` モジュール追加。API から OAuth/connections 系を削除し sources/ingest 系に置換。全文検索を pg_bigm と明記。sync_runs → ingest_runs。Qdrant 比較を経た pgvector 採用理由を §11 に追記 |
 | v0.1 | 2026-07-04 | 初版（壁打ちドラフト） |

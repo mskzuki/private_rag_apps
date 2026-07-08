@@ -1,6 +1,6 @@
 # Private RAG Apps — 要件定義書 (requirements.md)
 
-> 壁打ちドラフト v0.3。技術選定は §7 の表で個別に差し替え可能な形にしています。
+> v0.4。技術選定は §7 の表で個別に差し替え可能な形にしています。
 > アーキテクチャの正は `architecture.md`、データモデルの正は `db_design.md`（本書は概要のみ記載）。
 
 ---
@@ -100,6 +100,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 - 取得したコンテキストに**基づいてのみ**回答を生成する
 - 回答には**必ず出典を付与**する
 - コンテキストに答えがない場合は、推測せず「該当する情報が見つかりませんでした」と返す
+  - 注: 検索は関連の弱いチャンクでも top-k 件返すのが通常のため、この要件の実体は「**弱い/無関係なコンテキストで生成が棄権（abstain）できること**」である（検索 0 件時の短絡は例外パス）。Eval の negative ケース（§9）はこの棄権を検証する
 - 回答はストリーミングで返す（M2 で充足。M0〜M1 は非ストリームでよい → §10）
 
 ### FR-5 チャット体験
@@ -138,11 +139,15 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 - プロンプト・検索ロジック・チャンキング変更時に**回帰を検出**できること（→ §9, CI 連携）
 - 最小 Eval（10 問 + Recall@5）は **M0 から**運用する（→ §10）
+- 正解ラベルは **文書（path）レベル**で持つ（chunk_id 非依存。チャンキング変更後もデータセットを再利用するため → `docs/specs/m3_eval_expansion.md` §3.3）
+- Recall@10 計測のため、評価時は本番 `top_k` と別の **`EVAL_TOP_K`（≥10）** で取得する
+- CI ゲートは **検索指標=ハード / 生成指標=ソフト**（LLM-as-judge のノイズを許容。同 §7.3）
 
 ### NFR-2 パフォーマンス
 
-- TTFT（初回トークンまで）の目標値を設定（例: p95 < 2.0s）※ 実測後に確定
-- 検索レイテンシ p95 目標（例: < 500ms、リランク込み）※ 実測後に確定
+- TTFT（初回トークンまで）の目標値を設定（例: p95 < 2.0s）※ M2 で実測しベースラインから暫定確定（→ `docs/specs/m2_streaming_and_history.md` §7）
+- 検索レイテンシ p95 目標（例: < 500ms、リランク込み）※ 同上
+- 計測は**初回ターン / フォローアップを分けて**行う（フォローアップは condense の LLM 呼び出しが TTFT に直列に乗るため、同一目標にしない）
 
 ### NFR-3 セキュリティ / プライバシー
 
@@ -157,6 +162,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 - トークン数・コストを呼び出し単位で記録し集計する
 - 主要処理のレイテンシをスパンとして計測する
 - 計装は **M0 の骨格段階で配線**する（後付けはトレース漏れを生むため → §10）
+- `LANGFUSE_*` 未設定時は計装を **no-op（graceful degradation）** とし、アプリ・デモ・Eval の動作を妨げない（NFR-8 のレビュアー体験を優先）
 
 ### NFR-5 コスト管理
 
@@ -175,7 +181,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 ### NFR-8 再現性 ★レビュアー体験の核
 
 - クリーンな環境で `git clone` → `docker compose up` → `make demo` により **15 分以内にチャット可能**な状態へ到達できる
-- 必要な外部アカウントは Anthropic / Voyage / Langfuse の API キーのみ（SaaS アカウント不要）
+- 必要な外部アカウントは **Anthropic / Voyage の API キーのみ**（SaaS アカウント不要）。**Langfuse は任意**（未設定でもデモは完動し、設定すればトレースが有効になる → NFR-4）
 
 ---
 
@@ -196,7 +202,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 | 領域 | 採用 | 根拠 | 代替案 |
 |---|---|---|---|
-| 言語 | Python 3.12 | GenAI エコシステムが最も厚い | — |
+| 言語 | Python 3.13 | GenAI エコシステムが最も厚い | — |
 | API | FastAPI + uvicorn | async / SSE ストリーミングが素直 | Litestar |
 | フロント | Next.js (App Router) | 既存スキル活用、ストリーミング UI、型共有 | Remix / SvelteKit |
 | チャット UI | **assistant-ui**（shadcn/ui ベース） | バックエンド非依存のカスタムランタイムで自前 SSE を直接受けられる。streaming/auto-scroll/retry を再実装不要。ChatKit は OpenAI API 密結合のため不採用 | Vercel AI SDK + AI Elements / 自前(shadcn) |
@@ -227,12 +233,12 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 ## 9. 評価(Eval)計画 ★ショーケースの核
 
-- **ゴールデンデータセット**: シードコーパス（FR-7）に対する質問と、期待される出典（正解チャンク/ドキュメント）・期待回答を用意。目標 30〜50 問
+- **ゴールデンデータセット**: シードコーパス（FR-7）に対する質問と、期待される出典（**文書 path レベルの正解ラベル**。chunk_id 非依存 → NFR-1）・参考回答を用意。目標 30〜50 問。コーパスに答えの無い **negative ケース**を必ず含める（FR-4 の棄権検証）
 - **指標**: §NFR-1 の Retrieval / Generation 指標
 - **段階導入**:
   - **M0: 最小 Eval**（10 問 + Recall@5 のみ）を導入し、以降のすべての検索・プロンプト変更の前後で実行する
   - **M3: 拡充**（30〜50 問、生成指標、CI 連携）
-- **実行**: `make eval` でローカル実行。CI では **プロンプト・検索ロジック・チャンキング変更を含む PR** で自動実行し、ベースラインからの劣化を検出
+- **実行**: `make eval` でローカル実行。CI では **プロンプト・検索・チャンキング・生成・evals 変更を含む PR** で自動実行し、**committed baseline** からの劣化を検出（検索=ハードゲート / 生成=ソフト。詳細 → `docs/specs/m3_eval_expansion.md` §7）
 - 結果はスコアの推移として記録（回帰の可視化）
 
 > 最小 Eval を M0 に置く理由: M1（ハイブリッド化 + リランク）は本プロジェクト最大の検索変更であり、計測なしで実施すると「Eval がショーケースの核」という主張と矛盾するため。
@@ -243,7 +249,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 | M | 内容 | 充足する要件 |
 |---|---|---|
-| **M0 Walking Skeleton** | シードコーパス取り込み(CLI) → ベクトル検索のみ → 非ストリーム回答。**Langfuse 計装の配線**と**最小 Eval(10問/Recall@5)** を含む | FR-2(基本), NFR-4, §9最小Eval |
+| **M0 Walking Skeleton** | シードコーパス取り込み(CLI) → ベクトル検索のみ → 非ストリーム回答。**Langfuse 計装の配線**・**最小 Eval(10問/Recall@5)**・**基本 CI(lint/test)** を含む | FR-2(基本), NFR-4, NFR-7(基本CI), §9最小Eval |
 | **M1** | ハイブリッド検索(pg_bigm + RRF)+ リランク。**Eval before/after を記録** | FR-3, NFR-1 |
 | **M2** | ストリーミング(SSE)+ 出典 UI + 会話履歴 | FR-4(完全), FR-5, FR-6 |
 | **M3** | Eval 拡充(30〜50問・生成指標・CI 連携) | NFR-1(完全), §9 |
@@ -270,7 +276,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 - [ ] README: クイックスタート(NFR-8 準拠)+ デモ GIF + アーキテクチャ図
 - [ ] `make demo` がクリーン環境で 15 分以内に成功する
-- [ ] Eval レポート(30〜50 問、M1 前後の before/after を含むスコア推移)が公開されている
+- [ ] Eval レポート(30〜50 問、M1 前後の before/after を含むスコア推移)が **`docs/eval_report.md`** として公開されている
 - [ ] Langfuse トレースのスクリーンショット/説明がドキュメントにある
 - [ ] 設計文書一式(requirements / architecture / db_design / AGENTS)が実装と一致している
 - [ ] M0〜M5 完了
@@ -281,6 +287,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.4 | 2026-07-08 | 全体レビュー反映: Python を 3.13 に更新（AGENTS v0.6 との矛盾解消）。**Langfuse を任意化**（NFR-4 no-op / NFR-8 必須アカウントから除外）。M2 スペック追従: NFR-2 に初回/フォローアップ別計測を明記。M3 スペック追従: NFR-1/§9 に **path レベル正解（chunk_id 非依存）**・`EVAL_TOP_K` 分離・**検索ハード/生成ソフトのゲート**・committed baseline・CI トリガ範囲拡大を反映。FR-4 に棄権（abstain）の実体を注記。§10 M0 に**基本 CI(lint/test)** を追加。§12 に Eval レポート公開パスを明記。ヘッダのドラフト表記を除去 |
 | v0.3 | 2026-07-07 | チャット UI ライブラリに assistant-ui を採用（§7 に行追加）。ChatKit は OpenAI API 密結合のため不採用 |
 | v0.2 | 2026-07-07 | SaaS コネクタ(Notion/Slack/Drive)・OAuth をスコープ外へ移動。シードコーパス+デモモード(FR-7)・データ管理UI(FR-8)を追加。全文検索を pg_bigm に統一(§7)。最小 Eval を M0 に前倒し(§9)、Langfuse 計装を M0 に前倒し(NFR-4)。NFR-8 再現性・§12 Definition of Success を追加。§6/§8 を概要+参照に縮約(正は architecture.md / db_design.md)。取り込みは CLI 実行とし ARQ/Redis を将来拡張へ |
 | v0.1 | 2026-07-04 | 初版(壁打ちドラフト) |
