@@ -1,6 +1,7 @@
 import json
 import uuid
 import asyncio
+import time
 from datetime import datetime
 from fastapi import FastAPI, Depends, Request, HTTPException
 from pydantic import BaseModel
@@ -84,6 +85,7 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
     ユーザーからのメッセージを受け取り、会話履歴を踏まえた検索と回答生成を行う。
     生成結果はServer-Sent Events (SSE)を用いてストリーミングで返却し、終了時にメッセージをDBへ一括保存する。
     """
+    start_time = time.time()
     conversation_id = body.conversation_id
     if not conversation_id:
         conv = Conversation()
@@ -120,6 +122,7 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
         full_content = ""
         citations_data = []
         has_error = False
+        first_token = False
 
         try:
             # Generate Answer
@@ -132,6 +135,14 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
                 data = event["data"]
 
                 if event_type == "token":
+                    if not first_token:
+                        ttft_ms = (time.time() - start_time) * 1000
+                        first_token = True
+                        try:
+                            from langfuse import get_client
+                            get_client().update_current_trace(metadata={"ttft_ms": round(ttft_ms, 2)})
+                        except Exception:
+                            pass
                     full_content += data
                     yield {"event": "token", "data": json.dumps(data, ensure_ascii=False)}
                 elif event_type == "citations":

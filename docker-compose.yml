@@ -1,8 +1,8 @@
 services:
   db:
     build:
-      context: ./backend/docker/db
-      dockerfile: Dockerfile.local
+      context: ./backend
+      dockerfile: docker/db/Dockerfile.local
     ports:
       - "5432:5432"
     environment:
@@ -14,8 +14,8 @@ services:
 
   api:
     build:
-      context: ./backend/docker/api
-      dockerfile: Dockerfile.local
+      context: ./backend
+      dockerfile: docker/api/Dockerfile.local
     ports:
       - "8000:8000"
     env_file:
