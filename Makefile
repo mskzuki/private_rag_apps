@@ -1,4 +1,4 @@
-.PHONY: setup migrate demo ingest test lint fmt eval api
+.PHONY: setup migrate demo ingest test lint fmt eval api openapi
 
 api:
 	cd backend && uv run uvicorn private_rag_apps.api.main:app --reload
@@ -25,3 +25,6 @@ fmt:
 
 eval:
 	cd backend && uv run python -m private_rag_apps.evals
+
+openapi:
+	cd backend && uv run python -c "import json; from private_rag_apps.api.main import app; json.dump(app.openapi(), open('openapi.json', 'w'), ensure_ascii=False, indent=2)"

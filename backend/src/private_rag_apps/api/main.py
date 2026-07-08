@@ -4,7 +4,7 @@ import asyncio
 import time
 from datetime import datetime
 from fastapi import FastAPI, Depends, Request, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -20,20 +20,26 @@ from private_rag_apps.generation.generator import condense, generate_answer_stre
 app = FastAPI(title="Private RAG Apps API")
 
 class ChatRequest(BaseModel):
-    message: str
-    conversation_id: Optional[str] = None
+    message: str = Field(description="ユーザーからの質問メッセージ")
+    conversation_id: Optional[str] = Field(
+        default=None,
+        description="継続する会話のID。未指定の場合は新規会話を作成する",
+    )
 
 class ConversationResponse(BaseModel):
-    id: str
-    title: str
-    updated_at: datetime
+    id: str = Field(description="会話ID")
+    title: str = Field(description="会話タイトル（初回メッセージの先頭から自動生成）")
+    updated_at: datetime = Field(description="最終更新日時")
 
 class MessageResponse(BaseModel):
-    id: str
-    role: str
-    content: str
-    citations: Optional[List[Dict[str, Any]]] = None
-    created_at: datetime
+    id: str = Field(description="メッセージID")
+    role: str = Field(description="発言者の役割（user または assistant）")
+    content: str = Field(description="メッセージ本文")
+    citations: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="回答の根拠となった出典情報（assistantメッセージのみ）",
+    )
+    created_at: datetime = Field(description="作成日時")
 
 @app.get("/health")
 def health_check():

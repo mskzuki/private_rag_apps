@@ -16,3 +16,11 @@
 5. APIサーバー起動: `make api`
 
 `GET http://localhost:8000/health` または `POST http://localhost:8000/api/chat` で疎通確認が可能です。
+
+## OpenAPI仕様書の生成
+
+```bash
+make openapi
+```
+
+`backend/openapi.json` にOpenAPI仕様書が出力されます。
