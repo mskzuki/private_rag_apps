@@ -1,9 +1,21 @@
-import { ThreadState, ThreadMessage } from "@assistant-ui/react";
+import type { ThreadMessage } from "@assistant-ui/react";
+import { useActiveThreadStore } from "@/lib/active-thread-store";
 
-let activeThreadId: string | undefined = undefined;
+type ConversationSummary = {
+  id: string;
+  title: string;
+  updated_at: string;
+};
 
-export const getActiveThreadId = () => activeThreadId;
+type ConversationMessage = {
+  id: string;
+  role: string;
+  created_at: string;
+  content: string;
+  citations?: unknown[];
+};
 
+// biome-ignore lint/suspicious/noExplicitAny: shaped for the legacy subscribe/getHistory adapter contract, which predates the currently installed @assistant-ui RemoteThreadListAdapter interface (list/rename/archive/unarchive/delete/generateTitle/fetch) — see thread history follow-up
 export const createThreadAdapter = (): any => {
   return {
     async initialize() {
@@ -12,19 +24,19 @@ export const createThreadAdapter = (): any => {
       });
       if (!res.ok) throw new Error("Failed to initialize conversation");
       const data = await res.json();
-      activeThreadId = data.id;
+      useActiveThreadStore.getState().setActiveThreadId(data.id);
       return {
         threadId: data.id,
       };
     },
-    async subscribe(callback: any) {
+    async subscribe(callback: (payload: { threads: unknown[] }) => void) {
       // For initial load, we fetch the list
       const fetchList = async () => {
         const res = await fetch("/api/conversations");
         if (res.ok) {
-          const list = await res.json();
+          const list: ConversationSummary[] = await res.json();
           callback({
-            threads: list.map((c: any) => ({
+            threads: list.map((c) => ({
               id: c.id,
               title: c.title,
               isMain: false,
@@ -34,9 +46,9 @@ export const createThreadAdapter = (): any => {
           });
         }
       };
-      
+
       fetchList();
-      
+
       // We don't have a websocket/SSE for thread list updates, so we just poll or refresh manually.
       // But we can trigger fetchList when a new thread is created if we have an event emitter.
       // For now, an empty unsubscribe is fine.
@@ -44,22 +56,22 @@ export const createThreadAdapter = (): any => {
         unsubscribe() {},
       };
     },
-    async getHistory(threadId: any) {
-      activeThreadId = threadId;
+    async getHistory(threadId: string) {
+      useActiveThreadStore.getState().setActiveThreadId(threadId);
       const res = await fetch(`/api/conversations/${threadId}`);
       if (!res.ok) throw new Error("Failed to fetch conversation history");
-      const data = await res.json();
-      
-      const messages: ThreadMessage[] = data.map((msg: any) => ({
+      const data: ConversationMessage[] = await res.json();
+
+      const messages: ThreadMessage[] = data.map((msg) => ({
         id: msg.id,
         role: msg.role === "assistant" ? "assistant" : "user",
         createdAt: new Date(msg.created_at),
         content: [{ type: "text", text: msg.content }],
         metadata: {
-          citations: msg.citations || [],
-        }
-      }));
-      
+          custom: { citations: msg.citations || [] },
+        },
+      })) as unknown as ThreadMessage[];
+
       return {
         messages,
       };

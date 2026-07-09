@@ -73,6 +73,7 @@ type AttachmentPreviewProps = {
 const AttachmentPreview: FC<AttachmentPreviewProps> = ({ src }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   return (
+    // biome-ignore lint/performance/noImgElement: src is a blob:/data: URL from a locally attached file; next/image's optimizer can't fetch those
     <img
       src={src}
       alt="Attachment preview"
@@ -94,9 +95,7 @@ const AttachmentPreviewDialog: FC<PropsWithChildren> = ({ children }) => {
 
   return (
     <Dialog>
-      <DialogTrigger
-        className="aui-attachment-preview-trigger hover:bg-accent/50 cursor-pointer transition-colors"
-      >
+      <DialogTrigger className="aui-attachment-preview-trigger hover:bg-accent/50 cursor-pointer transition-colors">
         {children}
       </DialogTrigger>
       <DialogContent className="aui-attachment-preview-dialog-content [&>button]:bg-foreground/60 [&_svg]:text-background [&>button]:hover:[&_svg]:text-destructive p-2 sm:max-w-3xl [&>button]:rounded-full [&>button]:p-1 [&>button]:opacity-100 [&>button]:ring-0!">
@@ -169,26 +168,40 @@ const AttachmentUI: FC = () => {
         )}
       >
         <AttachmentPreviewDialog>
-          <TooltipTrigger render={<div className={cn(
-                                  "aui-attachment-tile bg-muted relative size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] border transition-opacity hover:opacity-75",
-                                  isError && "border-destructive",
-                                )} role="button" tabIndex={0} aria-label={`${typeLabel} attachment${
-                                  isError ? ", upload failed" : isUploading ? ", uploading" : ""
-                                }`} />}><AttachmentThumb />{isUploading && (
-                                  <div
-                                    aria-hidden="true"
-                                    className="aui-attachment-tile-uploading bg-background/60 absolute inset-0 flex items-center justify-center backdrop-blur-[1px]"
-                                  >
-                                    <Loader2Icon className="text-muted-foreground size-5 animate-spin" />
-                                  </div>
-                                )}{isError && (
-                                  <div
-                                    aria-hidden="true"
-                                    className="aui-attachment-tile-error bg-destructive/10 absolute inset-0 flex items-center justify-center"
-                                  >
-                                    <AlertCircleIcon className="text-destructive size-5" />
-                                  </div>
-                                )}</TooltipTrigger>
+          <TooltipTrigger
+            render={
+              // biome-ignore lint/a11y/useSemanticElements: this div is already nested inside DialogTrigger's <button>; a real <button> here would be invalid nested interactive content
+              <div
+                className={cn(
+                  "aui-attachment-tile bg-muted relative size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] border transition-opacity hover:opacity-75",
+                  isError && "border-destructive",
+                )}
+                role="button"
+                tabIndex={0}
+                aria-label={`${typeLabel} attachment${
+                  isError ? ", upload failed" : isUploading ? ", uploading" : ""
+                }`}
+              />
+            }
+          >
+            <AttachmentThumb />
+            {isUploading && (
+              <div
+                aria-hidden="true"
+                className="aui-attachment-tile-uploading bg-background/60 absolute inset-0 flex items-center justify-center backdrop-blur-[1px]"
+              >
+                <Loader2Icon className="text-muted-foreground size-5 animate-spin" />
+              </div>
+            )}
+            {isError && (
+              <div
+                aria-hidden="true"
+                className="aui-attachment-tile-error bg-destructive/10 absolute inset-0 flex items-center justify-center"
+              >
+                <AlertCircleIcon className="text-destructive size-5" />
+              </div>
+            )}
+          </TooltipTrigger>
         </AttachmentPreviewDialog>
         {isComposer && <AttachmentRemove />}
       </AttachmentPrimitive.Root>
@@ -201,7 +214,17 @@ const AttachmentUI: FC = () => {
 
 const AttachmentRemove: FC = () => {
   return (
-    <AttachmentPrimitive.Remove render={<TooltipIconButton tooltip="Remove file" className="aui-attachment-tile-remove text-muted-foreground hover:[&_svg]:text-destructive absolute end-1.5 top-1.5 size-3.5 rounded-full bg-white opacity-100 shadow-sm hover:bg-white! [&_svg]:text-black" side="top" />}><XIcon className="aui-attachment-remove-icon size-3 dark:stroke-[2.5px]" /></AttachmentPrimitive.Remove>
+    <AttachmentPrimitive.Remove
+      render={
+        <TooltipIconButton
+          tooltip="Remove file"
+          className="aui-attachment-tile-remove text-muted-foreground hover:[&_svg]:text-destructive absolute end-1.5 top-1.5 size-3.5 rounded-full bg-white opacity-100 shadow-sm hover:bg-white! [&_svg]:text-black"
+          side="top"
+        />
+      }
+    >
+      <XIcon className="aui-attachment-remove-icon size-3 dark:stroke-[2.5px]" />
+    </AttachmentPrimitive.Remove>
   );
 };
 
@@ -227,6 +250,19 @@ export const ComposerAttachments: FC = () => {
 
 export const ComposerAddAttachment: FC = () => {
   return (
-    <ComposerPrimitive.AddAttachment render={<TooltipIconButton tooltip="Add Attachment" side="bottom" variant="ghost" size="icon" className="aui-composer-add-attachment hover:bg-muted-foreground/15 dark:border-muted-foreground/15 dark:hover:bg-muted-foreground/30 size-7 rounded-full p-1 text-xs font-semibold" aria-label="Add Attachment" />}><PlusIcon className="aui-attachment-add-icon size-4.5 stroke-[1.5px]" /></ComposerPrimitive.AddAttachment>
+    <ComposerPrimitive.AddAttachment
+      render={
+        <TooltipIconButton
+          tooltip="Add Attachment"
+          side="bottom"
+          variant="ghost"
+          size="icon"
+          className="aui-composer-add-attachment hover:bg-muted-foreground/15 dark:border-muted-foreground/15 dark:hover:bg-muted-foreground/30 size-7 rounded-full p-1 text-xs font-semibold"
+          aria-label="Add Attachment"
+        />
+      }
+    >
+      <PlusIcon className="aui-attachment-add-icon size-4.5 stroke-[1.5px]" />
+    </ComposerPrimitive.AddAttachment>
   );
 };

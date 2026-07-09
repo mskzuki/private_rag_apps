@@ -14,9 +14,9 @@ export const ThreadFollowupSuggestions: FC = () => {
       }
     >
       <div className="aui-thread-followup-suggestions flex min-h-8 items-center justify-center gap-2">
-        {suggestions.map((suggestion, idx) => (
+        {suggestions.map((suggestion) => (
           <ThreadPrimitive.Suggestion
-            key={idx}
+            key={suggestion.prompt}
             className="aui-thread-followup-suggestion bg-background hover:bg-muted/80 rounded-full border px-3 py-1 text-sm transition-colors ease-in"
             prompt={suggestion.prompt}
             method="replace"

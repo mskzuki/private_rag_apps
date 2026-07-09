@@ -1,16 +1,21 @@
-import { ChatModelAdapter } from "@assistant-ui/react";
+import type { ChatModelAdapter } from "@assistant-ui/react";
 
-export const createChatAdapter = (conversationId?: string): ChatModelAdapter => {
+export const createChatAdapter = (
+  conversationId?: string,
+): ChatModelAdapter => {
   return {
     async *run(options) {
       console.log("RUN OPTIONS:", Object.keys(options), options);
       const { messages, abortSignal } = options;
       const lastMessage = messages[messages.length - 1];
-      if (!lastMessage || lastMessage.role !== "user") {
+      if (lastMessage?.role !== "user") {
         return;
       }
-      
-      const userMessage = lastMessage.content[0]?.type === "text" ? lastMessage.content[0].text : "";
+
+      const userMessage =
+        lastMessage.content[0]?.type === "text"
+          ? lastMessage.content[0].text
+          : "";
 
       const response = await fetch("/api/chat", {
         method: "POST",
@@ -27,7 +32,7 @@ export const createChatAdapter = (conversationId?: string): ChatModelAdapter => 
       if (!response.ok) {
         throw new Error(`Failed to send message: ${response.statusText}`);
       }
-      
+
       const reader = response.body?.getReader();
       if (!reader) {
         throw new Error("No response body");
@@ -36,15 +41,16 @@ export const createChatAdapter = (conversationId?: string): ChatModelAdapter => 
       const decoder = new TextDecoder("utf-8");
       let textBuffer = "";
       let accumulatedText = "";
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const metadata: any = { citations: [] };
+      const metadata: { custom: { citations: unknown[] } } = {
+        custom: { citations: [] },
+      };
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
         textBuffer += decoder.decode(value, { stream: true });
-        
+
         const lines = textBuffer.split("\n");
         textBuffer = lines.pop() || ""; // Keep the last incomplete line in buffer
 
@@ -63,24 +69,24 @@ export const createChatAdapter = (conversationId?: string): ChatModelAdapter => 
                 } else if (typeof parsed === "string") {
                   accumulatedText += parsed;
                 }
-              } catch (e) {
+              } catch {
                 // If the parse fails, assume it's raw string (e.g. basic fallback)
-                accumulatedText += dataStr.replace(/^"|"$/g, '');
+                accumulatedText += dataStr.replace(/^"|"$/g, "");
               }
-              
+
               yield {
                 content: [{ type: "text", text: accumulatedText }],
-                metadata: metadata
+                metadata: metadata,
               };
             } else if (currentEvent === "citations") {
               try {
                 const parsed = JSON.parse(dataStr);
                 // backend yields {"event": "citations", "data": json.dumps(data)}
                 // wait, if it yields json.dumps({"citations": []}), it might be a double encoded string or just an object
-                metadata.citations = parsed?.citations ?? parsed ?? []; 
+                metadata.custom.citations = parsed?.citations ?? parsed ?? [];
                 yield {
                   content: [{ type: "text", text: accumulatedText }],
-                  metadata: metadata
+                  metadata: metadata,
                 };
               } catch (e) {
                 console.error("Failed to parse citations", e);

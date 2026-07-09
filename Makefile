@@ -21,10 +21,11 @@ test:
 
 lint:
 	cd backend && uv run ruff check . && uv run mypy .
-	cd frontend && pnpm lint
+	cd frontend && pnpm lint && pnpm fmt:check
 
 fmt:
 	cd backend && uv run ruff format .
+	cd frontend && pnpm fmt
 
 # ゴールデンデータセットでEvalハーネスを実行。合否ではなくスコア回帰を監視する（テストとは別物）
 eval:
