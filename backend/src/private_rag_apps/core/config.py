@@ -24,6 +24,16 @@ class Settings(BaseSettings):
     sse_keepalive_sec: int = 15  # SSE 接続の keep-alive 送信間隔（秒）
     title_max_chars: int = 40  # スレッドタイトルの最大文字数
 
+    # M3 Evaluation Settings
+    judge_model: str = "claude-3-haiku-20240307"
+    judge_temperature: float = 0.0
+    eval_gen_temperature: float = 0.0
+    eval_gen_max_tokens: int = 1024
+    eval_top_k: int = 12
+    eval_ef_search: int = 100  # 大きめの値
+    eval_judge_samples: int = 1
+    eval_dataset_path: str = "evals/dataset/m3_golden.jsonl"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

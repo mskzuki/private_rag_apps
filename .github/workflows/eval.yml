@@ -1,0 +1,87 @@
+name: Eval CI
+
+on:
+  pull_request:
+    paths:
+      - 'backend/src/private_rag_apps/prompts/**'
+      - 'backend/src/private_rag_apps/retrieval/**'
+      - 'backend/src/private_rag_apps/ingestion/**'
+      - 'backend/src/private_rag_apps/generation/**'
+      - 'backend/src/private_rag_apps/evals/**'
+      - 'backend/evals/**'
+      - 'backend/src/private_rag_apps/core/config.py'
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: rag_user
+          POSTGRES_PASSWORD: rag_pass
+          POSTGRES_DB: rag_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+          
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          
+      - name: Install dependencies
+        working-directory: ./backend
+        run: uv sync
+        
+      - name: Migrate Database
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_db
+        run: uv run alembic upgrade head
+        
+      - name: Ingest Seed Corpus
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_db
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: uv run python -m private_rag_apps.cli.main ingest
+        
+      - name: Run M3 Eval
+        id: eval
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_db
+          VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          uv run python -m private_rag_apps.evals
+          
+      - name: Post PR Comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            if (fs.existsSync('docs/eval_report.md')) {
+              const report = fs.readFileSync('docs/eval_report.md', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: report
+              });
+            }

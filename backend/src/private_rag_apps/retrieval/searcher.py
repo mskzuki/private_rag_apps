@@ -13,25 +13,38 @@ def retrieve_context(
     query: str,
     *,
     strategy: Optional[str] = None,
-) -> List[Dict[str, Any]]:
+    diagnostic_mode: bool = False,
+) -> List[Dict[str, Any]] | Dict[str, List[Dict[str, Any]]]:
     """与えられたクエリに対して関連するコンテキスト（チャンク）を取得する。
     設定された戦略（vector, hybrid, hybrid_rerank）に応じて検索処理を振り分ける。
+    diagnostic_mode が True の場合、リランク前後のリストを含む辞書を返す。
     """
     strategy = strategy or settings.retrieval_strategy
+
+    if diagnostic_mode:
+        db.execute(text(f"SET LOCAL hnsw.ef_search = {settings.eval_ef_search}"))
 
     emb = _embed_query(query)
 
     if strategy == "vector":
         chunks = _vector_search(db, emb, settings.rerank_top_k)
+        if diagnostic_mode:
+            return {"fused_ranking": chunks, "reranked_ranking": chunks}
     elif strategy == "hybrid":
         chunks = _hybrid_search(
             db, query, emb, settings.candidate_k, settings.rrf_k, settings.rerank_top_k,
         )
+        if diagnostic_mode:
+            return {"fused_ranking": chunks, "reranked_ranking": chunks}
     elif strategy == "hybrid_rerank":
         fused_chunks = _hybrid_search(
             db, query, emb, settings.candidate_k, settings.rrf_k, settings.fuse_k,
         )
-        chunks = _rerank(query, fused_chunks, settings.rerank_top_k)
+        # 評価用トップKが指定されていればそれを使用、そうでなければ rerank_top_k
+        top_k = settings.eval_top_k if diagnostic_mode else settings.rerank_top_k
+        chunks = _rerank(query, fused_chunks, top_k)
+        if diagnostic_mode:
+            return {"fused_ranking": fused_chunks, "reranked_ranking": chunks}
     else:
         raise ValueError(f"Unknown retrieval_strategy: {strategy}")
 

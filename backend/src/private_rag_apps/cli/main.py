@@ -1,3 +1,5 @@
+# コーパス取り込み用CLI。ingestion層を呼ぶ薄い層で、ロジックは持たない。
+# `make ingest` / `make demo` から実行される。
 import argparse
 from private_rag_apps.core.db import SessionLocal
 from private_rag_apps.ingestion.indexer import run_ingestion

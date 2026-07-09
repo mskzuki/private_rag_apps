@@ -335,11 +335,11 @@ CI ジョブは本番と同じクリーン経路をたどる:
 3. **`architecture.md`**: `evals/` の評価フロー（§6.1）と judge が `evals/` から LLM を呼ぶ依存、および **`retrieval` の評価/診断モード（融合直後＋リランク後の両ランキングを返す）** を明記（AGENTS.md §3 と整合。§4.2）。
 4. **`AGENTS.md` §7/§9**: CI の実行経路（migrate→ingest(seed)→eval）とゲート方針を反映。
 
-> **未決事項**（実装着手前に確定する）
-> - スコア尺度: 生成指標を連続値（0–1）にするか離散等級にするか。
-> - tolerance の初期値（初回ベースライン取得後に確定）。
-> - Langfuse Datasets 連携を M3 で実配線するか、フックだけ用意して後続にするか。
-> - graded relevance（`grade`）をどこまで付与するか（binary 開始で十分か）。
+> **決定事項**（Phase 0 にて確定）
+> - スコア尺度: 生成指標は 0/1 の離散等級（Binary）とする。
+> - tolerance の初期値: 初回ベースライン取得後に確定する。
+> - Langfuse Datasets 連携: M3 ではフックだけ用意し、実配線は後続とする。
+> - graded relevance（`grade`）: M3 では binary 開始とし、grade の付与は見送る。
 
 ---
 
