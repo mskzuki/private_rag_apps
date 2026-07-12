@@ -2,35 +2,33 @@ import pytest
 from unittest.mock import patch, MagicMock
 from private_rag_apps.evals.judge import _call_judge, evaluate_faithfulness, evaluate_answer_relevance
 
-def mock_anthropic_response(text: str):
+def mock_openai_response(text: str):
     mock_client = MagicMock()
-    mock_message = MagicMock()
-    mock_content = MagicMock()
-    mock_content.text = text
-    mock_message.content = [mock_content]
-    mock_message.usage.input_tokens = 10
-    mock_message.usage.output_tokens = 20
-    mock_client.messages.create.return_value = mock_message
+    mock_response = MagicMock()
+    mock_response.output_text = text
+    mock_response.usage.input_tokens = 10
+    mock_response.usage.output_tokens = 20
+    mock_client.responses.create.return_value = mock_response
     return mock_client
 
-@patch('private_rag_apps.evals.judge.anthropic.Anthropic')
+@patch('private_rag_apps.evals.judge.openai.OpenAI')
 @patch('private_rag_apps.evals.judge.get_client')
-def test_call_judge_valid_json(mock_get_client, mock_anthropic):
-    mock_anthropic.return_value = mock_anthropic_response('{"score": 1, "rationale": "good"}')
+def test_call_judge_valid_json(mock_get_client, mock_openai):
+    mock_openai.return_value = mock_openai_response('{"score": 1, "rationale": "good"}')
     result = _call_judge("test prompt")
     assert result == {"score": 1, "rationale": "good"}
 
-@patch('private_rag_apps.evals.judge.anthropic.Anthropic')
+@patch('private_rag_apps.evals.judge.openai.OpenAI')
 @patch('private_rag_apps.evals.judge.get_client')
-def test_call_judge_markdown_json(mock_get_client, mock_anthropic):
-    mock_anthropic.return_value = mock_anthropic_response('```json\n{"score": 0, "rationale": "bad"}\n```')
+def test_call_judge_markdown_json(mock_get_client, mock_openai):
+    mock_openai.return_value = mock_openai_response('```json\n{"score": 0, "rationale": "bad"}\n```')
     result = _call_judge("test prompt")
     assert result == {"score": 0, "rationale": "bad"}
 
-@patch('private_rag_apps.evals.judge.anthropic.Anthropic')
+@patch('private_rag_apps.evals.judge.openai.OpenAI')
 @patch('private_rag_apps.evals.judge.get_client')
-def test_call_judge_invalid_json(mock_get_client, mock_anthropic):
-    mock_anthropic.return_value = mock_anthropic_response('invalid response')
+def test_call_judge_invalid_json(mock_get_client, mock_openai):
+    mock_openai.return_value = mock_openai_response('invalid response')
     result = _call_judge("test prompt")
     assert result["score"] == 0
     assert "Error parsing judge output" in result["rationale"]

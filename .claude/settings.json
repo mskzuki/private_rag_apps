@@ -21,7 +21,10 @@
       "Bash(echo \"exit: $?\")",
       "Bash(pnpm fmt:check)",
       "Bash(xargs -I{} cat {})",
-      "Bash(uv --version)"
+      "Bash(uv --version)",
+      "Skill(claude-api)",
+      "Skill(claude-api:*)",
+      "WebSearch"
     ]
   },
   "enabledPlugins": {

@@ -135,7 +135,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 | レイヤ | 指標 | 規模・条件 |
 |---|---|---|
 | Retrieval | Recall@5, Recall@10, nDCG@10, MRR | ゴールデンデータセット 30〜50 問 |
-| Generation | Faithfulness, Answer Relevance | LLM-as-judge（判定モデルは Claude 系の軽量モデルに固定し、モデル名を記録） |
+| Generation | Faithfulness, Answer Relevance | LLM-as-judge（判定モデルは GPT 系の軽量モデルに固定し、モデル名を記録） |
 
 - プロンプト・検索ロジック・チャンキング変更時に**回帰を検出**できること（→ §9, CI 連携）
 - 最小 Eval（10 問 + Recall@5）は **M0 から**運用する（→ §10）
@@ -181,7 +181,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 ### NFR-8 再現性 ★レビュアー体験の核
 
 - クリーンな環境で `git clone` → `docker compose up` → `make demo` により **15 分以内にチャット可能**な状態へ到達できる
-- 必要な外部アカウントは **Anthropic / Voyage の API キーのみ**（SaaS アカウント不要）。**Langfuse は任意**（未設定でもデモは完動し、設定すればトレースが有効になる → NFR-4）
+- 必要な外部アカウントは **OpenAI / Voyage の API キーのみ**（SaaS アカウント不要）。**Langfuse は任意**（未設定でもデモは完動し、設定すればトレースが有効になる → NFR-4）
 
 ---
 
@@ -217,7 +217,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 | ORM | SQLAlchemy | pgvector 拡張との親和性、Alembic との連携が標準的 |
 | マイグレーション | Alembic | 定番 |
 | 全文検索 | **pg_bigm**（bigram） | 標準 FTS は日本語の分かち書き不可。pg_bigm は拡張 1 つで日本語対応・軽量 |
-| LLM | Anthropic Claude | 既存利用・引用生成が安定、MVPではClaudeを使うが、他のLLMにも切り替えられるように作る |
+| LLM | OpenAI GPT | 低コスト・低レイテンシ重視で採用。他のLLMにも切り替えられるように作る |
 | 埋め込み | Voyage (voyage-4-lite / 1024次元) | 現行世代・多言語対応・最初の2億トークン無料 |
 | リランク | Voyage rerank-2.5 | 埋め込みと同ベンダで完結 |
 | トレース/コスト | Langfuse | LLM トレース + コスト集計を一元化 |

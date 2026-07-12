@@ -1,4 +1,4 @@
-import anthropic
+import openai
 from typing import List, Dict, Any
 from langfuse import observe, get_client
 from private_rag_apps.core.config import settings
@@ -10,20 +10,20 @@ def condense(query: str, history_messages: List[Dict[str, str]]) -> str:
     """会話履歴を踏まえ、ユーザーの最新の質問を自己完結したクエリに書き換える"""
     if not history_messages:
         return query
-    
+
     history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history_messages[-settings.condense_history_turns*2:]])
-    
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+    client = openai.OpenAI(api_key=settings.openai_api_key)
     prompt = build_condense_prompt(history_text, query)
-    
+
     try:
-        response = client.messages.create(
+        response = client.responses.create(
             model=settings.condense_model,
-            max_tokens=256,
-            system=CONDENSE_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}]
+            max_output_tokens=256,
+            instructions=CONDENSE_SYSTEM_PROMPT,
+            input=prompt
         )
-        
+
         get_client().update_current_generation(
             usage_details={
                 "input": response.usage.input_tokens,
@@ -31,7 +31,7 @@ def condense(query: str, history_messages: List[Dict[str, str]]) -> str:
             },
             model=settings.condense_model
         )
-        return getattr(response.content[0], "text", "").strip()
+        return response.output_text.strip()
     except Exception as e:
         print(f"Condense error: {e}")
         return query # Fallback
@@ -56,27 +56,33 @@ def generate_answer_stream(query: str, context_chunks: List[Dict[str, Any]]):
     
     yield {"event": "citations", "data": citations}
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = openai.OpenAI(api_key=settings.openai_api_key)
     context_text = build_context_text(context_chunks)
     user_prompt = f"コンテキスト情報:\n{context_text}\n\n質問: {query}"
 
     try:
-        with client.messages.stream(
+        stream = client.responses.create(
             model=settings.llm_model,
-            max_tokens=1024,
-            system=RAG_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}]
-        ) as stream:
-            for text in stream.text_stream:
-                yield {"event": "token", "data": text}
-        
-        response = stream.get_final_message()
-        get_client().update_current_generation(
-            usage_details={
-                "input": response.usage.input_tokens,
-                "output": response.usage.output_tokens
-            },
-            model=settings.llm_model
+            max_output_tokens=1024,
+            instructions=RAG_SYSTEM_PROMPT,
+            input=user_prompt,
+            stream=True
         )
+
+        final_response = None
+        for event in stream:
+            if event.type == "response.output_text.delta":
+                yield {"event": "token", "data": event.delta}
+            elif event.type == "response.completed":
+                final_response = event.response
+
+        if final_response is not None:
+            get_client().update_current_generation(
+                usage_details={
+                    "input": final_response.usage.input_tokens,
+                    "output": final_response.usage.output_tokens
+                },
+                model=settings.llm_model
+            )
     except Exception as e:
         yield {"event": "error", "data": str(e)}

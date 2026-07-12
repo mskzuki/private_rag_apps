@@ -24,7 +24,7 @@ flowchart LR
     end
     subgraph ext[External]
       corpus[ローカルコーパス<br/>.md / .txt]
-      ai[Anthropic Claude / Voyage]
+      ai[OpenAI GPT / Voyage]
       lf[Langfuse]
     end
 
@@ -63,7 +63,7 @@ flowchart LR
 |---|---|---|
 | `api` | HTTP ルート・SSE・リクエスト検証・取り込みの BackgroundTasks 起動 | — |
 | `cli` | `ingest` / `demo` コマンド（ingestion を呼ぶ薄い層） | — |
-| `generation` | プロンプト組立・LLM 生成・引用付与・クエリ書き換え | **Claude** |
+| `generation` | プロンプト組立・LLM 生成・引用付与・クエリ書き換え | **OpenAI(GPT)** |
 | `retrieval` | ハイブリッド検索・RRF 融合・リランク | **Voyage(embed/rerank)** |
 | `ingestion` | コーパス読み込み・正規化・チャンキング・埋め込み・upsert | **Voyage(embed)**, ローカル FS |
 | `models` | SQLAlchemy / Pydantic モデル | — |
@@ -111,7 +111,7 @@ sequenceDiagram
     participant R as retrieval
     participant PG as PostgreSQL
     participant G as generation
-    participant LLM as Claude
+    participant LLM as OpenAI
 
     U->>API: POST /api/chat (message, conversation_id?)
     API->>G: 履歴考慮のクエリ書き換え(condense)
@@ -300,7 +300,7 @@ sequenceDiagram
 - **リランクを最終段に**: 一次検索の再現率を稼ぎ、精度はリランクで担保する定番構成。
 - **ジョブキューを持たない**: SaaS 同期がスコープ外のため、取り込みは CLI + プロセス内 BackgroundTasks で足りる。ARQ/Redis は SaaS コネクタ導入時に再検討（requirements §11）。
 - **更新は全置換**: source 更新時は chunks を全削除→再生成。部分更新より単純で整合を保ちやすい。
-- **チャット UI は assistant-ui**: バックエンド非依存のカスタムランタイムで自前 SSE を直接受けられ、shadcn/ui ベースでコードを資産化できる。streaming/auto-scroll/retry 等の定番 UX を再実装しない。ChatKit は不採用（OpenAI API への密結合・UI スクリプトが OpenAI CDN 依存で、Claude 構成・公開リポジトリに不向き）。
+- **チャット UI は assistant-ui**: バックエンド非依存のカスタムランタイムで自前 SSE を直接受けられ、shadcn/ui ベースでコードを資産化できる。streaming/auto-scroll/retry 等の定番 UX を再実装しない。ChatKit は不採用（UI スクリプトが特定ベンダーの CDN に依存し、バックエンド非依存の構成・公開リポジトリに不向き）。
 
 ---
 

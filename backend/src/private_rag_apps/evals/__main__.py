@@ -15,7 +15,7 @@ from private_rag_apps.evals.judge import evaluate_faithfulness, evaluate_answer_
 
 def get_corpus_hash() -> str:
     seed_path = Path(settings.corpus_dir)
-    # Just a simple hash of all filenames and their mtimes to represent corpus state
+    # コーパスの状態を表すため、全ファイル名とmtimeの単純なハッシュを取るだけ
     if not seed_path.exists():
         return "missing"
     hasher = hashlib.sha256()
@@ -26,14 +26,14 @@ def get_corpus_hash() -> str:
     return hasher.hexdigest()
 
 def get_answer(query: str, context: List[Dict[str, Any]]) -> str:
-    # We want a single fixed string. We override settings temporarily
+    # 単一の固定文字列が欲しいので、設定を一時的に上書きする
     old_llm = settings.llm_model
-    # We could override temp/max_tokens here if generator.py supported them, but generator currently uses hardcoded 1024 and default temp.
-    # We will assume generator.py should be using eval settings, or we just use it as is for now since M3 says "fixed max_tokens".
-    # Since we can't easily override temp without changing generator.py, we'll just run it. (Wait, M3 spec says EVAL_GEN_TEMPERATURE=0).
-    # We will pass them if possible, but currently generator doesn't take kwargs.
-    # To strictly follow M3, we should patch generator.py or just use the current implementation.
-    # For now, we collect the streamed tokens.
+    # generator.py がtemp/max_tokensの上書きに対応していればここで上書きできるが、現状は1024固定・デフォルトtempがハードコードされている。
+    # generator.py がeval用の設定を使うべきか、M3が言う「fixed max_tokens」の通り現状のまま使うべきかは未確定。
+    # generator.py を変更しない限りtempを簡単に上書きできないので、ひとまずこのまま実行する（M3スペックではEVAL_GEN_TEMPERATURE=0とされている点に注意）。
+    # 可能であればkwargsとして渡したいが、現状generatorはkwargsを受け付けない。
+    # M3に厳密に従うにはgenerator.pyにパッチを当てるか、現状の実装をそのまま使うしかない。
+    # 今のところはストリームされたトークンを収集するだけにする。
     stream = generate_answer_stream(query, context)
     full_text = ""
     for event in stream:
@@ -57,7 +57,7 @@ def run_eval() -> None:
         
         results = []
         
-        # Aggregators
+        # 集計用
         agg = {
             "fused": {"recall_5": 0.0, "recall_10": 0.0, "ndcg_10": 0.0, "mrr": 0.0},
             "reranked": {"recall_5": 0.0, "recall_10": 0.0, "ndcg_10": 0.0, "mrr": 0.0},
@@ -67,7 +67,7 @@ def run_eval() -> None:
         for item in dataset:
             print(f"Evaluating {item.id}...")
             
-            # Condense query if multi-turn
+            # マルチターンの場合はクエリを要約する
             query_to_search = item.question
             if item.turns:
                 history_messages = []
@@ -78,8 +78,8 @@ def run_eval() -> None:
                 query_to_search = condense(item.question, history_messages)
                 print(f"  Condensed query: {query_to_search}")
 
-            # 1. Retrieval
-            # Force hybrid_rerank for M3 eval
+            # 1. 検索
+            # M3のevalではhybrid_rerankを強制する
             ret_result = retrieve_context(db, query=query_to_search, strategy="hybrid_rerank", diagnostic_mode=True)
             fused_chunks = ret_result["fused_ranking"]
             reranked_chunks = ret_result["reranked_ranking"]
@@ -87,25 +87,25 @@ def run_eval() -> None:
             fused_metrics = evaluate_retrieval(fused_chunks, item.relevant)
             reranked_metrics = evaluate_retrieval(reranked_chunks, item.relevant)
             
-            # 2. Generation & Judge
+            # 2. 生成 & Judge
             faithfulness = 0.0
             answer_relevance = 0.0
             answer = ""
-            
-            # Generate answer
+
+            # 回答を生成
             answer = get_answer(item.question, reranked_chunks[:settings.rerank_top_k])
-            
+
             # Judge
             f_res = evaluate_faithfulness(item.question, answer, reranked_chunks[:settings.rerank_top_k])
             faithfulness = f_res.get("score", 0)
-            
+
             ar_res = evaluate_answer_relevance(item.question, answer, item.reference_answer)
             answer_relevance = ar_res.get("score", 0)
-            
-            # Negative case: if expect_no_answer is true, retrieval metrics are 1.0 (handled in evaluate_retrieval)
-            # Faithfulness/Relevance are based on abstaining.
-            
-            # Accumulate
+
+            # ネガティブケース: expect_no_answerがtrueの場合、検索指標は1.0になる（evaluate_retrieval内で処理）
+            # Faithfulness/Relevanceは「回答を控えたか」に基づく。
+
+            # 積算
             for k in agg["fused"]:
                 agg["fused"][k] += fused_metrics[k]
                 agg["reranked"][k] += reranked_metrics[k]
@@ -126,7 +126,7 @@ def run_eval() -> None:
                 }
             })
             
-        # Averages
+        # 平均値
         for k in agg["fused"]:
             agg["fused"][k] /= total
             agg["reranked"][k] /= total
@@ -134,7 +134,7 @@ def run_eval() -> None:
         agg["generation"]["faithfulness"] /= total
         agg["generation"]["answer_relevance"] /= total
         
-        # Provenance
+        # 実行時の来歴情報
         provenance = {
             "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             "dataset_version": "m3_golden",
@@ -159,7 +159,7 @@ def run_eval() -> None:
             "results": results
         }
         
-        # Check against baseline
+        # baselineとの比較
         baseline_path = Path("evals/baselines/current.json")
         fail = False
         warnings = []
@@ -168,16 +168,16 @@ def run_eval() -> None:
             with open(baseline_path, "r") as f:
                 baseline = json.load(f)
             
-            # Simple tolerance logic (Hard gate for retrieval, soft for generation)
+            # 単純な許容誤差ロジック（検索はハードゲート、生成はソフトゲート）
             for k in agg["reranked"]:
                 diff = baseline["aggregate"]["reranked"][k] - agg["reranked"][k]
-                if diff > 0.05: # tolerance 0.05
+                if diff > 0.05: # 許容誤差 0.05
                     print(f"FAIL: Retrieval metric {k} dropped by {diff:.3f} (baseline: {baseline['aggregate']['reranked'][k]:.3f})")
                     fail = True
             
             for k in ["faithfulness", "answer_relevance"]:
                 diff = baseline["aggregate"]["generation"][k] - agg["generation"][k]
-                if diff > 0.1: # tolerance 0.1
+                if diff > 0.1: # 許容誤差 0.1
                     print(f"WARN: Generation metric {k} dropped by {diff:.3f}")
                     warnings.append(f"{k} dropped by {diff:.3f}")
         else:
@@ -186,7 +186,7 @@ def run_eval() -> None:
             with open(baseline_path, "w") as f:
                 json.dump(report, f, indent=2)
 
-        # Output Markdown report
+        # Markdownレポートを出力
         md_report = f"""# M3 Eval Report
 
 ## Provenance
@@ -231,8 +231,8 @@ def run_eval() -> None:
             
         print(f"Saved JSON report to {out_path}")
         
-        # [HOOK] Langfuse Datasets/Experiments integration
-        # Uncomment and implement this when Langfuse dataset features are ready
+        # [HOOK] Langfuse Datasets/Experiments連携
+        # Langfuseのdataset機能が準備でき次第、コメントを外して実装する
         # _upload_to_langfuse(report, dataset)
         
         if fail:

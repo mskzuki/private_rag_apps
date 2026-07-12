@@ -2,17 +2,18 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# APIキー、LLMモデル、Embedモデルは.envから読み込み
 class Settings(BaseSettings):
     # 基本接続情報
-    anthropic_api_key: str = ""  # Claude API キー（generation で使用）
+    openai_api_key: str = ""  # OpenAI API キー（generation・evals で使用）
     voyage_api_key: str = ""  # Voyage AI API キー（埋め込み・リランクで使用）
     langfuse_public_key: str = ""  # Langfuse 公開鍵（任意。未設定なら計装は no-op）
     langfuse_secret_key: str = ""  # Langfuse 秘密鍵（任意。未設定なら計装は no-op）
     langfuse_host: str = "https://cloud.langfuse.com"  # Langfuse 送信先ホスト
     database_url: str = "postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_db"  # PostgreSQL(pgvector+pg_bigm)接続文字列
     corpus_dir: str = "seed/corpus"  # 取り込み対象コーパス（Markdown/テキスト）のディレクトリ
-    llm_model: str = "claude-3-haiku-20240307"  # 回答生成に使う Claude モデル
-    embed_model: str = "voyage-4-lite"  # 埋め込みに使う Voyage モデル（ingestion/retrieval で共有）
+    llm_model: str = ""  # 回答生成に使う OpenAI モデル
+    embed_model: str = ""  # 埋め込みに使う Voyage モデル（ingestion/retrieval で共有）
 
     # Retrieval Settings
     retrieval_strategy: str = "hybrid_rerank"  # vector, hybrid, hybrid_rerank
@@ -21,14 +22,14 @@ class Settings(BaseSettings):
     fuse_k: int = 40  # RRF 融合後に残す件数
     rerank_top_k: int = 8  # リランク後、最終的にコンテキストとして使う件数
     # Chat & Streaming Settings
-    condense_model: str = "claude-3-haiku-20240307"  # クエリ書き換え(query condensation)に使うモデル
+    condense_model: str = ""  # クエリ書き換え(query condensation)に使うモデル
     condense_history_turns: int = 5  # クエリ書き換え時に考慮する直近の会話ターン数
     chat_history_token_budget: int = 1000  # プロンプトに含める会話履歴のトークン上限
     sse_keepalive_sec: int = 15  # SSE 接続の keep-alive 送信間隔（秒）
     title_max_chars: int = 40  # スレッドタイトルの最大文字数
 
     # Evaluation Settings
-    judge_model: str = "claude-3-haiku-20240307"
+    judge_model: str = ""
     judge_temperature: float = 0.0
     eval_gen_temperature: float = 0.0
     eval_gen_max_tokens: int = 1024

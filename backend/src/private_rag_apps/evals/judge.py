@@ -1,21 +1,21 @@
 import json
-import anthropic
+import openai
 from typing import Dict, Any, List
 from langfuse import observe, get_client
 from private_rag_apps.core.config import settings
 from private_rag_apps.prompts.judge import JUDGE_FAITHFULNESS_PROMPT, JUDGE_ANSWER_RELEVANCE_PROMPT
 
 def _call_judge(prompt: str) -> Dict[str, Any]:
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = openai.OpenAI(api_key=settings.openai_api_key)
     try:
-        response = client.messages.create(
+        response = client.responses.create(
             model=settings.judge_model,
             temperature=settings.judge_temperature,
-            max_tokens=256,
-            system="あなたはJSONを出力する評価アシスタントです。",
-            messages=[{"role": "user", "content": prompt}]
+            max_output_tokens=256,
+            instructions="あなたはJSONを出力する評価アシスタントです。",
+            input=prompt
         )
-        
+
         # Record usage
         try:
             get_client().update_current_generation(
@@ -28,8 +28,8 @@ def _call_judge(prompt: str) -> Dict[str, Any]:
         except Exception:
             pass
 
-        text = getattr(response.content[0], "text", "").strip()
-        
+        text = response.output_text.strip()
+
         # Extract JSON from potential markdown blocks
         if text.startswith("```json"):
             text = text.replace("```json", "").replace("```", "").strip()

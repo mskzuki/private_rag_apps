@@ -10,12 +10,15 @@ import { Thread } from "@/components/assistant-ui/thread";
 import { ThreadList } from "@/components/assistant-ui/thread-list";
 import { useActiveThreadStore } from "@/lib/active-thread-store";
 import { createChatAdapter } from "@/lib/chat-adapter";
-import { createThreadAdapter } from "@/lib/thread-adapter";
+import {
+  createThreadHistoryAdapter,
+  createThreadListAdapter,
+} from "@/lib/thread-adapter";
 
 export const Assistant = () => {
-  const threadAdapter = useMemo(() => createThreadAdapter(), []);
+  const threadListAdapter = useMemo(() => createThreadListAdapter(), []);
   const runtime = useRemoteThreadListRuntime({
-    adapter: threadAdapter,
+    adapter: threadListAdapter,
     runtimeHook: () => {
       // biome-ignore lint/correctness/useHookAtTopLevel: runtimeHook is itself a hook invoked by useRemoteThreadListRuntime, per assistant-ui's API contract
       const threadId = useActiveThreadStore((s) => s.activeThreadId);
@@ -25,7 +28,14 @@ export const Assistant = () => {
         [threadId],
       );
       // biome-ignore lint/correctness/useHookAtTopLevel: runtimeHook is itself a hook invoked by useRemoteThreadListRuntime, per assistant-ui's API contract
-      return useLocalRuntime(chatAdapter);
+      const historyAdapter = useMemo(
+        () => createThreadHistoryAdapter(threadId),
+        [threadId],
+      );
+      // biome-ignore lint/correctness/useHookAtTopLevel: runtimeHook is itself a hook invoked by useRemoteThreadListRuntime, per assistant-ui's API contract
+      return useLocalRuntime(chatAdapter, {
+        adapters: { history: historyAdapter },
+      });
     },
   });
 

@@ -5,14 +5,14 @@
 ## 技術スタック
 - **Backend**: Python 3.13, FastAPI, uvicorn
 - **Store**: PostgreSQL + pgvector + pg_bigm, Alembic
-- **AI**: Anthropic Claude, Voyage AI
+- **AI**: OpenAI GPT, Voyage AI
 - **Observability**: Langfuse
 
 ## クイックスタート (デモモード)
 
-クリーンな環境（`git clone` 直後）から 15 分以内にチャットできる状態を目指しています。必須の外部キーは **Anthropic** と **Voyage** のみです（Langfuse は任意 — 未設定でも計装が no-op になり、アプリ・デモ・eval は問題なく動作します）。
+クリーンな環境（`git clone` 直後）から 15 分以内にチャットできる状態を目指しています。必須の外部キーは **OpenAI** と **Voyage** のみです（Langfuse は任意 — 未設定でも計装が no-op になり、アプリ・デモ・eval は問題なく動作します）。
 
-1. `cp backend/.env.example backend/.env` して `ANTHROPIC_API_KEY` / `VOYAGE_API_KEY` を設定
+1. `cp backend/.env.example backend/.env` して `OPENAI_API_KEY` / `VOYAGE_API_KEY` を設定
 2. `make setup`（uv sync / pnpm install / `.env` 生成（既にあれば何もしない）/ PostgreSQL(pgvector+pg_bigm) コンテナ起動）
 3. `make demo`（マイグレーション適用 → seed コーパス（`seed/corpus/`）を取り込み。2回目以降は無変更ファイルをスキップするため高速）
 4. 別ターミナルで `make api`（FastAPI起動、http://localhost:8000）

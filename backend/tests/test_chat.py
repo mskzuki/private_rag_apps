@@ -12,22 +12,28 @@ def test_generate_answer_stream_no_chunks():
     assert events[1]["event"] == "citations"
     assert events[1]["data"] == []
 
-@patch("private_rag_apps.generation.generator.anthropic.Anthropic")
-def test_generate_answer_stream_with_chunks(mock_anthropic):
-    # Mock Anthropic streaming response
+@patch("private_rag_apps.generation.generator.openai.OpenAI")
+def test_generate_answer_stream_with_chunks(mock_openai):
+    # Mock OpenAI Responses API streaming response
     mock_client = MagicMock()
-    mock_stream = MagicMock()
-    
-    mock_stream.__enter__.return_value = mock_stream
-    mock_stream.text_stream = ["Hello", " ", "World"]
-    
-    mock_final_message = MagicMock()
-    mock_final_message.usage.input_tokens = 10
-    mock_final_message.usage.output_tokens = 5
-    mock_stream.get_final_message.return_value = mock_final_message
-    
-    mock_client.messages.stream.return_value = mock_stream
-    mock_anthropic.return_value = mock_client
+
+    delta_events = []
+    for text in ("Hello", " ", "World"):
+        event = MagicMock()
+        event.type = "response.output_text.delta"
+        event.delta = text
+        delta_events.append(event)
+
+    final_response = MagicMock()
+    final_response.usage.input_tokens = 10
+    final_response.usage.output_tokens = 5
+
+    completed_event = MagicMock()
+    completed_event.type = "response.completed"
+    completed_event.response = final_response
+
+    mock_client.responses.create.return_value = delta_events + [completed_event]
+    mock_openai.return_value = mock_client
     
     chunks = [
         {"title": "T1", "path": "p1.md", "chunk_id": "c1", "content": "mock text"},
@@ -56,15 +62,15 @@ def test_condense_empty_history():
     result = condense("My query", [])
     assert result == "My query"
 
-@patch("private_rag_apps.generation.generator.anthropic.Anthropic")
-def test_condense_with_history(mock_anthropic):
+@patch("private_rag_apps.generation.generator.openai.OpenAI")
+def test_condense_with_history(mock_openai):
     mock_client = MagicMock()
     mock_response = MagicMock()
-    mock_response.content = [MagicMock(text="Condensed query")]
+    mock_response.output_text = "Condensed query"
     mock_response.usage.input_tokens = 10
     mock_response.usage.output_tokens = 5
-    mock_client.messages.create.return_value = mock_response
-    mock_anthropic.return_value = mock_client
+    mock_client.responses.create.return_value = mock_response
+    mock_openai.return_value = mock_client
     
     history = [
         {"role": "user", "content": "What is Python?"},

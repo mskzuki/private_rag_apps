@@ -5,7 +5,6 @@ export const createChatAdapter = (
 ): ChatModelAdapter => {
   return {
     async *run(options) {
-      console.log("RUN OPTIONS:", Object.keys(options), options);
       const { messages, abortSignal } = options;
       const lastMessage = messages[messages.length - 1];
       if (lastMessage?.role !== "user") {
@@ -44,6 +43,9 @@ export const createChatAdapter = (
       const metadata: { custom: { citations: unknown[] } } = {
         custom: { citations: [] },
       };
+      // Persists across reader.read() calls: an `event:` line and its `data:`
+      // line can land in separate chunks, so this must not reset per-read.
+      let currentEvent = "";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -53,8 +55,6 @@ export const createChatAdapter = (
 
         const lines = textBuffer.split("\n");
         textBuffer = lines.pop() || ""; // Keep the last incomplete line in buffer
-
-        let currentEvent = "";
 
         for (const line of lines) {
           if (line.startsWith("event: ")) {

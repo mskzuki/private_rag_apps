@@ -34,7 +34,7 @@ fmt:
 	cd backend && uv run ruff format .
 	cd frontend && pnpm fmt
 
-# ゴールデンデータセットでEvalハーネスを実行。合否ではなくスコア回帰を監視する（テストとは別物）
+# 評価データセットでEvalハーネスを実行。合否ではなくスコア回帰を監視する（テストとは別物）
 eval:
 	cd backend && uv run python -m private_rag_apps.evals
 
