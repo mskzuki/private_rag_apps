@@ -70,6 +70,45 @@ def test_stale_running_is_reaped_before_new_run_starts():
         db.close()
 
 
+def test_start_run_advisory_lock_serializes_concurrent_starts():
+    import threading
+
+    barrier = threading.Barrier(2)
+    outcomes: list[str] = []
+    started_runs: list[IngestRun] = []
+    lock = threading.Lock()
+
+    def attempt():
+        session = SessionLocal()
+        try:
+            barrier.wait(timeout=5)
+            run = start_run(session, trigger="cli")
+            with lock:
+                outcomes.append("started")
+                started_runs.append(run)
+        except IngestAlreadyRunningError:
+            with lock:
+                outcomes.append("rejected")
+        finally:
+            session.close()
+
+    threads = [threading.Thread(target=attempt) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=10)
+
+    try:
+        assert sorted(outcomes) == ["rejected", "started"]
+        assert len(started_runs) == 1
+    finally:
+        db = SessionLocal()
+        try:
+            _cleanup_runs(db, [r.id for r in started_runs])
+        finally:
+            db.close()
+
+
 def test_reap_stale_running_ignores_recent_running_rows():
     db = SessionLocal()
     run_ids = []
