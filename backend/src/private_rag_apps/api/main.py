@@ -3,17 +3,25 @@ import uuid
 import asyncio
 import time
 from datetime import datetime
-from fastapi import FastAPI, Depends, Request, HTTPException
+from fastapi import FastAPI, Depends, Request, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TypedDict
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from langfuse import observe, propagate_attributes
 from sse_starlette.sse import EventSourceResponse
 
-from private_rag_apps.core.db import get_db
+from private_rag_apps.core.db import get_db, SessionLocal
 from private_rag_apps.core.config import settings
-from private_rag_apps.models.rag import Conversation, Message
+from private_rag_apps.models.rag import Chunk, Conversation, IngestRun, Message, Source
+from private_rag_apps.ingestion.concurrency import (
+    IngestAlreadyRunningError,
+    acquire_start_lock,
+    get_running_run,
+    reap_stale_running,
+    start_run,
+)
+from private_rag_apps.ingestion.indexer import execute_ingestion
 from private_rag_apps.retrieval.searcher import retrieve_context
 from private_rag_apps.generation.generator import condense, generate_answer_stream
 
@@ -40,6 +48,33 @@ class MessageResponse(BaseModel):
         description="回答の根拠となった出典情報（assistantメッセージのみ）",
     )
     created_at: datetime = Field(description="作成日時")
+
+class SourceListItem(TypedDict):
+    id: str
+    path: str
+    title: str
+    chunk_count: int
+    updated_at: datetime
+    deleted_at: Optional[datetime]
+
+class TriggerIngestResult(TypedDict):
+    id: str
+    status: str
+    trigger: str
+
+class IngestRunListItem(TypedDict):
+    id: str
+    trigger: str
+    status: str
+    stats: Dict[str, Any]
+    error: Optional[str]
+    started_at: datetime
+    finished_at: Optional[datetime]
+
+class ResetIndexResult(TypedDict):
+    status: str
+    deleted_sources: int
+    deleted_chunks: int
 
 @app.get("/health")
 def health_check():
@@ -182,8 +217,7 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
                 )
                 db.add(user_msg)
                 db.add(assistant_msg)
-                
-                from sqlalchemy.sql import func
+
                 conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
                 if conv:
                     conv.updated_at = func.now()
@@ -202,3 +236,93 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
             yield {"event": "done", "data": json.dumps(done_payload, ensure_ascii=False)}
 
     return EventSourceResponse(event_generator(), ping=settings.sse_keepalive_sec)
+
+
+@app.get("/api/sources")
+def list_sources(
+    include_deleted: bool = False, db: Session = Depends(get_db)
+) -> List[SourceListItem]:
+    """取り込み済みソース一覧を、チャンク数・最終取り込み日時とともに返す（N+1を避けGROUP BYで集計）"""
+    query = (
+        db.query(Source, func.count(Chunk.id).label("chunk_count"))
+        .outerjoin(Chunk, Chunk.source_id == Source.id)
+        .group_by(Source.id)
+        .order_by(desc(Source.updated_at))
+    )
+    if not include_deleted:
+        query = query.filter(Source.deleted_at.is_(None))
+    rows = query.all()
+    return [
+        {
+            "id": str(source.id),
+            "path": source.path,
+            "title": source.title,
+            "chunk_count": chunk_count,
+            "updated_at": source.updated_at,
+            "deleted_at": source.deleted_at,
+        }
+        for source, chunk_count in rows
+    ]
+
+
+def _run_ingest_in_background(run_id: str, force_delete: bool) -> None:
+    """BackgroundTasksから呼ばれる実処理。リクエストスコープのSessionとは独立したSessionを使う"""
+    db = SessionLocal()
+    try:
+        run = db.query(IngestRun).filter(IngestRun.id == run_id).first()
+        if run is None:
+            return
+        execute_ingestion(db, run, force_delete=force_delete)
+    finally:
+        db.close()
+
+
+@app.post("/api/ingest")
+def trigger_ingest(
+    background_tasks: BackgroundTasks, force_delete: bool = False, db: Session = Depends(get_db)
+) -> TriggerIngestResult:
+    """増分再取り込みをBackgroundTasksで起動し、作成したingest_runのidを即返す。
+    既にrunning中のrunがあれば409を返す（実行中ずっと有効な排他はrunning行の存在そのものが担う）"""
+    try:
+        run = start_run(db, trigger="api")
+    except IngestAlreadyRunningError as e:
+        raise HTTPException(status_code=409, detail=f"ingestion already running: {e}")
+
+    run_id = str(run.id)
+    background_tasks.add_task(_run_ingest_in_background, run_id, force_delete)
+    return {"id": run_id, "status": run.status, "trigger": run.trigger}
+
+
+@app.get("/api/ingest/runs")
+def list_ingest_runs(limit: int = 20, db: Session = Depends(get_db)) -> List[IngestRunListItem]:
+    """取り込み実行履歴・進行状態を新しい順に返す（UIはこれをポーリングして進捗表示する）"""
+    runs = db.query(IngestRun).order_by(desc(IngestRun.started_at)).limit(limit).all()
+    return [
+        {
+            "id": str(r.id),
+            "trigger": r.trigger,
+            "status": r.status,
+            "stats": r.stats,
+            "error": r.error,
+            "started_at": r.started_at,
+            "finished_at": r.finished_at,
+        }
+        for r in runs
+    ]
+
+
+@app.delete("/api/index")
+def reset_index(db: Session = Depends(get_db)) -> ResetIndexResult:
+    """コーパスのインデックス（sources/chunks）のみを初期化する。会話は保持する。
+    取り込み中/開始直後は拒否する（start_runと同じadvisory lockで排他し、開始レースを防ぐ。
+    監査はアプリログのみ、ingest_runsには記録しない）"""
+    reap_stale_running(db)
+    acquire_start_lock(db)
+    if get_running_run(db):
+        raise HTTPException(status_code=409, detail="ingestion is running")
+
+    deleted_chunks = db.query(Chunk).delete()
+    deleted_sources = db.query(Source).delete()
+    db.commit()
+    print(f"Index reset: deleted {deleted_sources} sources, {deleted_chunks} chunks")
+    return {"status": "ok", "deleted_sources": deleted_sources, "deleted_chunks": deleted_chunks}

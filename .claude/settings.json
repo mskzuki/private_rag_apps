@@ -1,13 +1,34 @@
 {
-  "permissions": {},
-  "deny": {},
   "env": {
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "70"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(node verify_error_states.mjs)",
+      "Bash(pkill -f \"uvicorn private_rag_apps.api.main\")",
+      "Bash(git -C /Users/mskzuk/src/private_rag_apps check-ignore -v backend/seed)",
+      "Bash(git -C /Users/mskzuk/src/private_rag_apps ls-files backend/seed)",
+      "Bash(git -C /Users/mskzuk/src/private_rag_apps status --short backend/seed)",
+      "Bash(ln -s ../seed /Users/mskzuk/src/private_rag_apps/backend/seed)",
+      "Bash(CORPUS_DIR=seed/corpus uv run python -c ' *)",
+      "Bash(python3 -c ' *)",
+      "Bash(diff /Users/mskzuk/src/private_rag_apps/AGENTS.md /Users/mskzuk/src/private_rag_apps/seed/corpus/AGENTS.md)",
+      "Bash(diff /Users/mskzuk/src/private_rag_apps/docs/requirements.md /Users/mskzuk/src/private_rag_apps/seed/corpus/requirements.md)",
+      "Bash(diff /Users/mskzuk/src/private_rag_apps/docs/architecture.md /Users/mskzuk/src/private_rag_apps/seed/corpus/architecture.md)",
+      "Bash(diff /Users/mskzuk/src/private_rag_apps/docs/db_design.md /Users/mskzuk/src/private_rag_apps/seed/corpus/db_design.md)",
+      "Bash(uvx --with mypy --with pydantic-settings --with sqlalchemy --with fastapi --with pgvector --with langfuse --with voyageai --with anthropic --with sse-starlette mypy src/private_rag_apps/api/main.py src/private_rag_apps/ingestion/ src/private_rag_apps/cli/main.py src/private_rag_apps/core/config.py)",
+      "Bash(pnpm lint *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(pnpm fmt:check)",
+      "Bash(xargs -I{} cat {})",
+      "Bash(uv --version)"
+    ]
   },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
     "code-review@claude-plugins-official": true
   },
+  "deny": {},
   "langage": "japanese"
 }

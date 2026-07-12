@@ -223,7 +223,13 @@ LIMIT :fuse_k;
 | 削除反映 | `sources.deleted_at`（chunks は検索時に JOIN で除外） |
 | 実行の観測 | `ingest_runs.stats`（added/updated/deleted/skipped/failed_files） |
 
-> ドキュメント更新時は「該当 source の chunks を全削除 → 再チャンク → 再挿入」で置換する（決定済み。部分更新より整合を保ちやすい）。
+> ドキュメント更新時は「該当 source の chunks を全削除 → 再チャンク → 再挿入」で置換する（決定済み。部分更新より整合を保ちやすい）。埋め込みは事前（トランザクション外）に計算し、delete+insert のみを 1 つの短いトランザクションで行うことで、検索がチャンク 0 件の中間状態を見ないようにする（M4 実装）。
+
+**多重実行の抑止（M4 実装）**: `ingest_runs` に部分ユニークインデックスは追加していない（DDL 非追加の方針）。代わりに、実行中ずっと効く排他は **`status='running'` 行の存在**そのものが担い、「running 確認 → INSERT」の間の race だけを `pg_advisory_xact_lock` で原子化する（`backend/src/private_rag_apps/ingestion/concurrency.py`）。プロセスクラッシュ等で `running` 行が残った場合は、`started_at` が閾値（`INGEST_STALE_RUNNING_SEC`）より古く `finished_at IS NULL` であれば、次回実行開始時に `error` へ回収してから新規実行を許可する（stale running reap）。将来的に DB 制約で強制したくなった場合は `CREATE UNIQUE INDEX ... WHERE status='running'` の部分ユニークインデックスが代替案（未採用）。
+
+**削除安全弁（M4 実装）**: 走査でヒットした path 数が生存 source 数（`deleted_at IS NULL`）に対して `INGEST_DELETE_GUARD_RATIO`（既定 0.5）未満、または走査 0 件の場合、削除フェーズのみを中断し追加/更新は適用する（`ingest_runs.error` に理由を記録）。`FORCE_DELETE` 指定時はこの安全弁をバイパスする。
+
+**soft-delete 済み path の復活経路（M4 実装）**: `sources.path` の UNIQUE 制約により、削除済み行と同じ path が再度取り込まれる場合は新規 INSERT ではなく既存行（`deleted_at` 付き）を path で引き当てて分岐する。内容が無変更なら `deleted_at` を NULL に戻すだけ（再埋め込みしない）、変更ありなら `deleted_at` 解除 + 全置換を行う。
 
 ---
 
@@ -246,5 +252,6 @@ LIMIT :fuse_k;
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.3 | 2026-07-11 | M4 追従: §7 に増分再取り込みの実装詳細を追記。埋め込み事前+短トランザクション全置換、多重実行抑止（`running` 行の存在 + 開始の原子性のための advisory lock。DDL 非追加）とstale running 回収、削除安全弁（`INGEST_DELETE_GUARD_RATIO`・`FORCE_DELETE`）、soft-delete 済み path の復活経路を明記 |
 | v0.2 | 2026-07-07 | requirements v0.2 追従: `connections`（OAuth トークン暗号化含む）・`sync_runs` を廃止。`documents` → `sources` に改名（path 一意・mtime 保持）、`ingest_runs` を独立ログとして新設（trigger 列追加）。ER 図・インデックス・ハイブリッド検索 SQL を sources 前提に更新。トークン暗号化セクションを削除 |
 | v0.1 | 2026-07-04 | 初版（壁打ちドラフト） |

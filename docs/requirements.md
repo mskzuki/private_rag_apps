@@ -1,7 +1,6 @@
 # Private RAG Apps — 要件定義書 (requirements.md)
 
-> v0.4。技術選定は §7 の表で個別に差し替え可能な形にしています。
-> アーキテクチャの正は `architecture.md`、データモデルの正は `db_design.md`（本書は概要のみ記載）。
+> v0.5。アーキテクチャの正は `architecture.md`、データモデルの正は `db_design.md`（本書は概要のみ記載）。
 
 ---
 
@@ -61,13 +60,14 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 |---|---|
 | コーパス (Corpus) | 取り込み対象のドキュメント集合。v1 ではローカルディレクトリ配下の Markdown / テキスト。 |
 | シードデータ | リポジトリに同梱するサンプルコーパス。デモモードと Eval ゴールデンデータセットの土台を兼ねる。 |
-| チャンク (Chunk) | ドキュメントを検索単位に分割したテキスト片。埋め込みと全文インデックスの対象。 |
-| 埋め込み (Embedding) | テキストを意味空間のベクトルに変換したもの。ベクトル検索に使用。 |
+| チャンク (Chunk) | ドキュメントを検索単位に分割したテキスト。埋め込みと全文インデックスの対象。 |
 | ハイブリッド検索 | ベクトル検索（意味的類似）と全文検索（語彙一致）を融合した検索。 |
 | RRF | Reciprocal Rank Fusion。複数の検索結果を順位ベースで融合する手法。 |
 | リランク (Rerank) | 一次検索で得た候補を、クロスエンコーダ等でクエリとの関連度に応じて並べ替える工程。 |
 | Faithfulness | 生成回答が、取得コンテキストに忠実か（コンテキスト外の主張をしていないか）の指標。 |
 | TTFT | Time To First Token。ストリーミングで最初のトークンが返るまでの時間。 |
+| 棄権 (Abstain) | コンテキストが弱い/無関係な場合に、生成が推測で答えず「該当する情報が見つかりませんでした」を返すこと（FR-4）。 |
+| Condense | マルチターン会話のフォローアップ質問を、直前の会話履歴を踏まえて自己完結したクエリに書き換える処理（FR-5）。 |
 
 ---
 
@@ -198,23 +198,31 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 ## 7. 技術選定(決定と根拠)
 
-> すべて差し替え可能。代替案を併記しています。
+### 7.1 フロントエンド
 
-| 領域 | 採用 | 根拠 | 代替案 |
-|---|---|---|---|
-| 言語 | Python 3.13 | GenAI エコシステムが最も厚い | — |
-| API | FastAPI + uvicorn | async / SSE ストリーミングが素直 | Litestar |
-| フロント | Next.js (App Router) | 既存スキル活用、ストリーミング UI、型共有 | Remix / SvelteKit |
-| チャット UI | **assistant-ui**（shadcn/ui ベース） | バックエンド非依存のカスタムランタイムで自前 SSE を直接受けられる。streaming/auto-scroll/retry を再実装不要。ChatKit は OpenAI API 密結合のため不採用 | Vercel AI SDK + AI Elements / 自前(shadcn) |
-| ストア | PostgreSQL + pgvector | **1 DB でベクトル + 全文** を扱え、ハイブリッド検索が組みやすい。運用が軽い | Qdrant / Weaviate |
-| 全文検索 | **pg_bigm**（bigram） | 標準 FTS は日本語の分かち書き不可。pg_bigm は拡張 1 つで日本語対応・軽量 | PGroonga（質重視） / 標準 FTS+形態素 |
-| 埋め込み | Voyage (voyage-4-lite / 1024次元) | 現行世代・多言語対応・最初の2億トークン無料・Claude と併用が自然 | voyage-4 / OpenAI text-embedding-3 |
-| リランク | Voyage rerank-2.5 | 埋め込みと同ベンダで完結 | Cohere rerank / cross-encoder |
-| LLM | Anthropic Claude | 既存利用・引用生成が安定 | — |
-| トレース/コスト | Langfuse | LLM トレース + コスト集計を一元化 | OpenTelemetry + 任意 backend |
-| 取り込み実行 | CLI（`make ingest` / `make demo`） | ローカルコーパスの MVP にジョブキューは過剰。SaaS コネクタ導入時に ARQ (Redis) を再検討 | ARQ / Celery |
-| マイグレーション | Alembic | 定番 | — |
-| パッケージ管理 | uv | 高速・モダン、showcase として印象良 | Poetry / pip-tools |
+| 領域 | 採用 | 根拠 |
+|---|---|---|
+| フレームワーク | Next.js (App Router) | 既存スキル活用、ストリーミング UI、型共有 |
+| チャット UI | **assistant-ui**（shadcn/ui ベース） | バックエンド非依存のカスタムランタイムで自前 SSE を直接受けられる。streaming/auto-scroll/retry を再実装不要。ChatKit は OpenAI API 密結合のため不採用 |
+| 状態管理 | Zustand | 軽量・ボイラープレート最小。assistant-ui のランタイム状態と分離したアプリ側 UI 状態（コーパス管理・デモモード表示等）を扱うのに十分 |
+
+### 7.2 バックエンド
+
+| 領域 | 採用 | 根拠 |
+|---|---|---|
+| 言語 | Python 3.13 | GenAI エコシステムが最も厚い |
+| パッケージ管理 | uv | 高速・モダン、showcase として印象良 |
+| API | FastAPI + uvicorn | async / SSE ストリーミングが素直 |
+| ストア | PostgreSQL + pgvector | **1 DB でベクトル + 全文** を扱え、ハイブリッド検索が組みやすい。運用が軽い |
+| ORM | SQLAlchemy | pgvector 拡張との親和性、Alembic との連携が標準的 |
+| マイグレーション | Alembic | 定番 |
+| 全文検索 | **pg_bigm**（bigram） | 標準 FTS は日本語の分かち書き不可。pg_bigm は拡張 1 つで日本語対応・軽量 |
+| LLM | Anthropic Claude | 既存利用・引用生成が安定、MVPではClaudeを使うが、他のLLMにも切り替えられるように作る |
+| 埋め込み | Voyage (voyage-4-lite / 1024次元) | 現行世代・多言語対応・最初の2億トークン無料 |
+| リランク | Voyage rerank-2.5 | 埋め込みと同ベンダで完結 |
+| トレース/コスト | Langfuse | LLM トレース + コスト集計を一元化 |
+| 取り込み実行 | CLI（`make ingest` / `make demo`） | ローカルコーパスの MVP にジョブキューは過剰。SaaS コネクタ導入時に ARQ (Redis) を再検討 |
+
 
 ---
 
@@ -226,8 +234,6 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 - **Chunk** — 検索単位（content・embedding・metadata・position）
 - **Conversation / Message** — 会話と発話（citations を jsonb で保持）
 - **IngestRun** — 取り込み実行ログ（added / updated / deleted / skipped）
-
-> v0.2 で SaaS 接続（Connection・OAuth トークン）が外れたため、`db_design.md` の改訂が必要（→ 変更履歴）。
 
 ---
 
@@ -287,6 +293,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.5 | 2026-07-09 | §7 技術選定をフロントエンド（§7.1）/ バックエンド（§7.2）の 2 表に分割（内容変更なし） |
 | v0.4 | 2026-07-08 | 全体レビュー反映: Python を 3.13 に更新（AGENTS v0.6 との矛盾解消）。**Langfuse を任意化**（NFR-4 no-op / NFR-8 必須アカウントから除外）。M2 スペック追従: NFR-2 に初回/フォローアップ別計測を明記。M3 スペック追従: NFR-1/§9 に **path レベル正解（chunk_id 非依存）**・`EVAL_TOP_K` 分離・**検索ハード/生成ソフトのゲート**・committed baseline・CI トリガ範囲拡大を反映。FR-4 に棄権（abstain）の実体を注記。§10 M0 に**基本 CI(lint/test)** を追加。§12 に Eval レポート公開パスを明記。ヘッダのドラフト表記を除去 |
 | v0.3 | 2026-07-07 | チャット UI ライブラリに assistant-ui を採用（§7 に行追加）。ChatKit は OpenAI API 密結合のため不採用 |
 | v0.2 | 2026-07-07 | SaaS コネクタ(Notion/Slack/Drive)・OAuth をスコープ外へ移動。シードコーパス+デモモード(FR-7)・データ管理UI(FR-8)を追加。全文検索を pg_bigm に統一(§7)。最小 Eval を M0 に前倒し(§9)、Langfuse 計装を M0 に前倒し(NFR-4)。NFR-8 再現性・§12 Definition of Success を追加。§6/§8 を概要+参照に縮約(正は architecture.md / db_design.md)。取り込みは CLI 実行とし ARQ/Redis を将来拡張へ |

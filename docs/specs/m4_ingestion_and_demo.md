@@ -113,7 +113,7 @@ flowchart LR
 
 - コーパス走査で**見つからなくなった** source は `deleted_at` を立てる（論理削除）。検索は JOIN で除外（db_design §6）。
 - **★安全弁（重要）**: コーパスディレクトリの設定ミス・マウント失敗・空ディレクトリ指定などで「全ファイルが消えた」ように見えると、**全 source が一括 soft delete される事故**が起きうる。これを防ぐため:
-  - **分母は「生存 source 数」**（`deleted_at IS NULL`）とする。走査でヒットした path 数がこれに対して `INGEST_DELETE_GUARD_RATIO`（既定 0.5＝半減以上の減少）を下回る、または**走査 0 件**なら、**削除を適用せず実行を `error` で中断**し、理由を `ingest_runs.error` に残す（追加/更新は適用済みでも削除だけ止める、あるいは実行全体を error にするかは §14 未決だが、既定は**削除フェーズのみ中断**）。
+  - **分母は「生存 source 数」**（`deleted_at IS NULL`）とする。走査でヒットした path 数がこれに対して `INGEST_DELETE_GUARD_RATIO`（既定 0.5＝半減以上の減少）を下回る、または**走査 0 件**なら、**削除フェーズのみを適用せず中断**する。追加/更新は既に個別にコミット済みのため取り消さず、`ingest_runs.status` は（他に失敗が無い限り）`success` を維持し、安全弁が発動した理由だけを `ingest_runs.error` に記録する（実行全体の失敗と区別する。§14 決定済み）。
   - **正当な大量削除のバイパス**: コーパス整理などで意図的に大量削除したい場合は `make ingest FORCE_DELETE=1`（API では明示フラグ）で安全弁を無効化できる。これが無いと大量削除のたびに中断して運用が詰まる。
   - **全消しは初期化を使う**: コーパス丸ごと消したい場合は増分ではなく `DELETE /api/index`（§5.3）を使う。増分取り込みの副作用で全消ししない。
 
@@ -224,7 +224,7 @@ make demo:  docker compose up -d db  →  make migrate  →  make ingest CORPUS=
 |---|---|
 | 個別ファイルの読込/チャンク/埋め込み失敗 | スキップして続行、`ingest_runs.stats.failed_files` に記録 |
 | 埋め込みバッチ失敗 | バッチ単位でリトライ、最終失敗は記録しスキップ（DB は触らない＝古い chunks 維持。§4.2） |
-| 走査結果 0 件 / 大幅減少（生存比） | **削除フェーズを適用せず `error` 中断**（§4.3 安全弁）。`FORCE_DELETE` で明示バイパス可 |
+| 走査結果 0 件 / 大幅減少（生存比） | **削除フェーズのみ中断**（追加/更新は適用済み）。`status` は `success` のまま `ingest_runs.error` に理由を記録（§4.3 安全弁）。`FORCE_DELETE` で明示バイパス可 |
 | 多重起動 | **`running` 行の存在で拒否**（開始の原子性のみ advisory lock。§4.4） |
 | stale な `running` 行（クラッシュ残骸） | 開始時に `error` へ回収してから新規実行を許可（§4.4） |
 | soft-delete 済み path の復活 | `deleted_at` を外す（無変更なら再埋め込みなし／変更ありは全置換。§4.1） |
@@ -254,30 +254,30 @@ make demo:  docker compose up -d db  →  make migrate  →  make ingest CORPUS=
 ## 11. 受け入れ条件（Acceptance Criteria）
 
 **増分再取り込み（FR-2）**
-- [ ] 無変更ファイルは `content_hash` 一致で skip され、再埋め込みが発生しない
-- [ ] 更新ファイルは chunks が全置換され、**埋め込みは事前・delete+insert は 1 トランザクション**で原子的に切り替わる（検索が中間状態を見ない）
-- [ ] 消失ファイルは `deleted_at` が立ち、検索対象から外れる
-- [ ] **soft-delete 済み path が復活**しても一意制約違反にならず、無変更なら再埋め込みせず `deleted_at` を外すだけになる（§4.1）
-- [ ] **削除安全弁**: 生存 source 比で大幅減少/0 件のとき削除フェーズが中断し、`FORCE_DELETE` でバイパスできる（§4.3）
-- [ ] **多重起動が `running` 行で拒否**され、実行中ずっと効く（開始の race は advisory lock で消える）。stale な running はクラッシュ後に回収される（§4.4）
-- [ ] 対応形式外/失敗ファイルが skip され `ingest_runs.stats` に記録される
+- [x] 無変更ファイルは `content_hash` 一致で skip され、再埋め込みが発生しない
+- [x] 更新ファイルは chunks が全置換され、**埋め込みは事前・delete+insert は 1 トランザクション**で原子的に切り替わる（検索が中間状態を見ない）
+- [x] 消失ファイルは `deleted_at` が立ち、検索対象から外れる
+- [x] **soft-delete 済み path が復活**しても一意制約違反にならず、無変更なら再埋め込みせず `deleted_at` を外すだけになる（§4.1）
+- [x] **削除安全弁**: 生存 source 比で大幅減少/0 件のとき削除フェーズが中断し、`FORCE_DELETE` でバイパスできる（§4.3）
+- [x] **多重起動が `running` 行で拒否**され、実行中ずっと効く（開始の race は advisory lock で消える）。stale な running はクラッシュ後に回収される（§4.4）
+- [x] 対応形式外/失敗ファイルが skip され `ingest_runs.stats` に記録される
 
 **管理 API / UI（FR-1 / FR-8）**
-- [ ] `GET /api/sources` が path/title/チャンク数/最終取り込み日時を返す
-- [ ] `POST /api/ingest` が BackgroundTasks で起動し run id を返す／`GET /api/ingest/runs` で進捗が見える
-- [ ] `DELETE /api/index` が sources/chunks のみ削除し**会話は保持**する（確認導線あり）／**取り込み中は拒否**される
-- [ ] 管理 UI でソース一覧・再取り込み（進捗表示）・初期化ができる
+- [x] `GET /api/sources` が path/title/チャンク数/最終取り込み日時を返す
+- [x] `POST /api/ingest` が BackgroundTasks で起動し run id を返す／`GET /api/ingest/runs` で進捗が見える
+- [x] `DELETE /api/index` が sources/chunks のみ削除し**会話は保持**する（確認導線あり）／**取り込み中は拒否**される
+- [x] 管理 UI でソース一覧・再取り込み（進捗表示）・初期化ができる
 
 **デモ / 再現性（FR-7 / NFR-8）**
-- [ ] `make demo` が 1 コマンドで「DB→migrate→seed 取り込み→チャット可能」まで到達する
-- [ ] seed が日本語含む現実的構成で、**M3 Eval データセットの path 実在チェックが通る**
-- [ ] `docker compose up` で **pgvector + pg_bigm 入り DB** が起動し `CREATE EXTENSION` が通る
-- [ ] クリーン環境で `git clone → docker compose up → make demo` が **15 分以内**に成功する（実測）
-- [ ] `LANGFUSE_*` 未設定でもデモが完動する
+- [x] `make demo` が 1 コマンドで「DB→migrate→seed 取り込み→チャット可能」まで到達する
+- [x] seed が日本語含む現実的構成で、**M3 Eval データセットの path 実在チェックが通る**
+- [x] `docker compose up` で **pgvector + pg_bigm 入り DB** が起動し `CREATE EXTENSION` が通る
+- [ ] クリーン環境で `git clone → docker compose up → make demo` が **15 分以内**に成功する（実測）→ **部分実測のみ**（`docs/specs/m4_tasklist.md` Phase 7 参照）。docker build(pg_bigm込み)・DB起動・migrateは合計1分未満で完了を確認したが、実際の`VOYAGE_API_KEY`が無く埋め込み込みのフル実行は未実測。実キー設定後にユーザー側での最終実測が必要
+- [x] `LANGFUSE_*` 未設定でもデモが完動する
 
 **共通（AGENTS.md §10）**
-- [ ] `make lint` / `make test` が通る／依存方向（FS アクセスは `ingestion` のみ）を守る
-- [ ] §13 の上位ドキュメント反映が済んでいる
+- [x] `make lint` / `make test` が通る／依存方向（FS アクセスは `ingestion` のみ）を守る
+- [x] §13 の上位ドキュメント反映が済んでいる
 
 ---
 
@@ -308,11 +308,11 @@ make demo:  docker compose up -d db  →  make migrate  →  make ingest CORPUS=
 
 > **未決事項**（実装着手前に確定）
 > - `content_hash` を生バイトにするか正規化後にするか（既定: 生バイト。§4.1）。
-> - 安全弁発動時に**実行全体を error にするか、削除フェーズのみ中断して追加/更新は残すか**（既定: 削除フェーズのみ中断。§4.3）。
 > - 15 分達成のため**ビルド済み DB イメージを publish** するか（ビルド時間が支配的な場合。§7.2）。
 > - 削除安全弁のしきい値（0.5）と `INGEST_STALE_RUNNING_SEC` の妥当性（seed 規模・実測で調整）。
 >
 > （解決済み: `DELETE /api/index` の監査は「アプリログのみ・監査テーブルは作らない」に決定。§5.3）
+> （解決済み: 安全弁発動時は削除フェーズのみ中断し、`ingest_runs.status` は `success` を維持、理由は `ingest_runs.error` に記録する。実行全体を `error` にはしない。§4.3）
 
 ---
 
@@ -337,5 +337,6 @@ AGENTS.md §12 に従い、**本スペック → `docs/specs/m4_tasklist.md` →
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.3 | 2026-07-12 | 実装レビューで判明した記述と実装の齟齬を解消: §4.3 の安全弁発動時の挙動を「削除フェーズのみ中断し `ingest_runs.status` は `success` を維持、理由は `ingest_runs.error` に記録する（実行全体は `error` にしない）」に確定・明記。§14 未決事項の該当項目を解決済みへ移動。挙動一覧表（§4.5 相当）の該当行を同趣旨に修正。実装（`ingestion/indexer.py`）・テスト・フロントのデータ管理UIのバッジ表示を追従 |
 | v0.2 | 2026-07-08 | セルフレビュー反映: (1) **soft-delete 済み path の復活経路**を追加（一意制約違反回避・無変更なら再埋め込みなし。§4.1）。(2) 多重実行抑止を **`running` 行で担保・advisory lock は開始の原子性のみ**に修正（BackgroundTasks 実行中の排他漏れを解消）+ **stale running 回収**（§4.4）。(3) 削除安全弁の**分母=生存 source** 明記と **`FORCE_DELETE` バイパス**（§4.3）。(4) `make demo` の **`CORPUS_DIR=seed/` 切替**と実運用の差し替え手順（§6.1）。(5) minor: sources 集計の N+1 回避、`stats` 逐次更新、取り込み中の初期化拒否、初期化の監査はアプリログのみに決定（§5）。受け入れ条件・テスト・§9/§10/§13/§14 に波及反映 |
 | v0.1 | 2026-07-08 | 初版。M4（増分再取り込み・データ管理 UI・デモ仕上げ）。増分の**埋め込み事前・短トランザクション全置換**、**削除安全弁**、**advisory lock による DDL 不要の多重実行抑止**、管理 API/UI、`make demo` 1 コマンド化、**pg_bigm 入り Postgres イメージ**、15 分クイックスタート実測、seed↔M3 データセットの整合、`DELETE /api/index` の会話非削除スコープを定義。上位ドキュメント反映点を §13 に明記 |

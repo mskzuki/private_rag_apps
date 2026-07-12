@@ -62,7 +62,7 @@ def _embed_query(query: str) -> List[float]:
     voyage_client = voyageai.Client(api_key=settings.voyage_api_key)
     from typing import cast
     return cast(List[float], voyage_client.embed(
-        [query], model="voyage-4-lite", input_type="query",
+        [query], model=settings.embed_model, input_type="query",
     ).embeddings[0])
 
 

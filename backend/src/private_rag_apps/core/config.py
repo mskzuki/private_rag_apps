@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -10,21 +12,22 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_db"  # PostgreSQL(pgvector+pg_bigm)接続文字列
     corpus_dir: str = "seed/corpus"  # 取り込み対象コーパス（Markdown/テキスト）のディレクトリ
     llm_model: str = "claude-3-haiku-20240307"  # 回答生成に使う Claude モデル
+    embed_model: str = "voyage-4-lite"  # 埋め込みに使う Voyage モデル（ingestion/retrieval で共有）
 
-    # M1 Retrieval Settings
+    # Retrieval Settings
     retrieval_strategy: str = "hybrid_rerank"  # vector, hybrid, hybrid_rerank
     candidate_k: int = 50  # 各検索経路（ベクトル/全文）から取得する候補件数
     rrf_k: int = 60  # RRF(Reciprocal Rank Fusion)融合の減衰パラメータ
     fuse_k: int = 40  # RRF 融合後に残す件数
     rerank_top_k: int = 8  # リランク後、最終的にコンテキストとして使う件数
-    # M2 Chat & Streaming Settings
+    # Chat & Streaming Settings
     condense_model: str = "claude-3-haiku-20240307"  # クエリ書き換え(query condensation)に使うモデル
     condense_history_turns: int = 5  # クエリ書き換え時に考慮する直近の会話ターン数
     chat_history_token_budget: int = 1000  # プロンプトに含める会話履歴のトークン上限
     sse_keepalive_sec: int = 15  # SSE 接続の keep-alive 送信間隔（秒）
     title_max_chars: int = 40  # スレッドタイトルの最大文字数
 
-    # M3 Evaluation Settings
+    # Evaluation Settings
     judge_model: str = "claude-3-haiku-20240307"
     judge_temperature: float = 0.0
     eval_gen_temperature: float = 0.0
@@ -33,6 +36,15 @@ class Settings(BaseSettings):
     eval_ef_search: int = 100  # 大きめの値
     eval_judge_samples: int = 1
     eval_dataset_path: str = "evals/dataset/m3_golden.jsonl"
+
+    # Ingestion Settings
+    ingest_delete_guard_ratio: float = 0.5  # 削除安全弁: 生存source比がこの値未満なら削除フェーズを中断（暫定値）
+    ingest_advisory_lock_key: int = 727110001  # 多重実行抑止（開始の原子性）用 advisory lock キー
+    ingest_stale_running_sec: int = 600  # running行をstaleとみなす経過秒（暫定値。実測後見直し）
+    ingest_stats_flush_every: int = 10  # 走査N件ごとにingest_runs.statsを逐次UPDATE
+    ingest_embed_batch_size: int = 64  # Voyage embed呼び出し1回あたりのチャンク数上限
+    ingest_trigger: Literal["cli", "demo"] = "cli"  # CLI --trigger 省略時の既定値（INGEST_TRIGGER）
+    force_delete: bool = False  # CLI --force-delete 省略時の既定値（FORCE_DELETE）
 
     model_config = SettingsConfigDict(
         env_file=".env",

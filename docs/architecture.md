@@ -47,6 +47,12 @@ flowchart LR
 
 単一ユーザー前提のため、UI からの再取り込みトリガは **FastAPI の BackgroundTasks（プロセス内非同期実行）** で行う。ジョブキューは導入しない。実行状態は `ingest_runs` テーブルで参照する。
 
+`POST /api/ingest` は、リクエストハンドラ内で `ingest_runs` の `running` 行を**同期的に作成してから** id を返し、実処理（走査・埋め込み・DB反映）は BackgroundTasks 側で**リクエストスコープとは独立した DB セッション**を使って実行する（`backend/src/private_rag_apps/api/main.py: trigger_ingest` / `_run_ingest_in_background`）。これにより、レスポンスが返った直後から次のリクエストまでの間も `running` 行が存在し続け、多重起動の排他が実行中ずっと有効になる。
+
+### pg_bigm 入り Postgres イメージ（NFR-8）
+
+`docker-compose.yml` の `db` サービスは、標準の `pgvector/pgvector` イメージには含まれない `pg_bigm` 拡張をソースからビルドして組み込んだイメージ（`backend/docker/db/Dockerfile.local`）を使う。`docker compose up` だけで `CREATE EXTENSION pg_bigm` が通る状態になることを保証する（クリーン環境 15 分クイックスタートの前提）。
+
 ---
 
 ## 2. モジュール責務と依存方向
@@ -199,8 +205,15 @@ sequenceDiagram
 ### 実行形態
 
 - CLI（`make ingest CORPUS=path/`, `make demo`）と、API からの BackgroundTasks 実行の 2 経路。実体は同一の `ingestion` サービス
-- 1 実行を `ingest_runs` に記録（added/updated/deleted/skipped の統計）
-- 多重実行の抑止: 実行中の `ingest_runs`（status='running'）があれば新規実行を拒否する
+- 1 実行を `ingest_runs` に記録（added/updated/deleted/skipped の統計。走査 N 件ごとに `stats` を逐次 UPDATE し、実行中も UI から進捗が見える）
+- 多重実行の抑止: 実行中の `ingest_runs`（status='running'）があれば新規実行を拒否する。プロセスクラッシュ等で `running` 行が残った場合は、開始時に stale 判定（`INGEST_STALE_RUNNING_SEC`）で `error` へ回収してから新規実行を許可する
+
+### 増分再取り込み（M4）
+
+- 各ファイルの `content_hash`（生バイト SHA256）を既存 `sources` 行と比較し、無変更ならスキップ（再チャンク・再埋め込みをしない）
+- 更新分は「埋め込みを事前に（トランザクション外で）計算 → 全チャンク揃ってから delete+insert を 1 つの短いトランザクションで実行」の順で全置換する。埋め込み失敗時は DB に触れず、旧 chunks を維持したままそのファイルをスキップする（`ingest_runs.stats.failed_files` に記録）
+- `sources.path` は UNIQUE のため、soft-delete 済みの path が復活した場合は新規 INSERT ではなく既存行を引き当てて分岐する（無変更なら `deleted_at` を外すだけ、変更ありなら全置換）
+- 走査で消えた source は `deleted_at` を立てる。ただし**削除安全弁**として、生存 source 数に対する走査ヒット数の比率が `INGEST_DELETE_GUARD_RATIO`（既定 0.5）を下回る、または走査 0 件の場合は削除フェーズのみを中断する（追加/更新は適用済みのまま）。`FORCE_DELETE` 指定でバイパス可能
 
 ---
 
@@ -261,6 +274,7 @@ sequenceDiagram
 
 - `core/config.py`（pydantic-settings）で一元管理。値のハードコード禁止
 - 必須キー: `ANTHROPIC_API_KEY` / `VOYAGE_API_KEY` / `DATABASE_URL` / `CORPUS_DIR`（`LANGFUSE_*` は**任意**・未設定時は計装 no-op。§8）
+- 増分再取り込み関連（すべて任意・既定値あり）: `INGEST_DELETE_GUARD_RATIO` / `INGEST_ADVISORY_LOCK_KEY` / `INGEST_STALE_RUNNING_SEC` / `INGEST_STATS_FLUSH_EVERY` / `INGEST_EMBED_BATCH_SIZE`
 
 ---
 
@@ -273,6 +287,9 @@ sequenceDiagram
 | 取り込み中の個別ファイル失敗 | 該当ファイルをスキップして続行、`ingest_runs.stats` に記録 |
 | 取り込み全体の失敗 | `ingest_runs.status='error'` + error 記録 |
 | 埋め込み API 失敗 | バッチ単位でリトライ、失敗バッチは記録してスキップ |
+| 削除安全弁の発動（走査結果が大幅減少/0件） | 削除フェーズのみ中断（追加/更新は適用済み）、`ingest_runs.error` に理由を記録。`FORCE_DELETE` でバイパス可 |
+| 取り込み中の多重起動 | `running` 行の存在で拒否（409相当）。stale な `running` 行は開始時に `error` へ回収 |
+| 取り込み中の `DELETE /api/index` | 拒否（409相当）。初期化は sources/chunks のみが対象で、会話（conversations/messages）は保持する。`ingest_runs` には記録せずアプリログにのみ残す |
 
 ---
 
@@ -291,6 +308,7 @@ sequenceDiagram
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.5 | 2026-07-11 | M4 追従: §1 に pg_bigm 入り Postgres イメージの注記と、`POST /api/ingest` が running 行を同期作成してから id を返す設計を追記。§6 に増分再取り込み（content_hash 判定・埋め込み事前+短トランザクション全置換・削除安全弁・soft-delete 復活経路）を追記。§9 に `INGEST_*` 設定キーを追記。§10 に削除安全弁・多重起動・`DELETE /api/index`（会話は保持）のエラー処理行を追加 |
 | v0.4 | 2026-07-08 | M2/M3 スペック追従 + 全体レビュー反映: §3.2/§7 の SSE を M2 確定版へ（**citations を生成前送出**・`done` に `conversation_id`・エラーターン非保存）。§7 API 表に `POST /api/conversations` 追加、assistant-ui に**累積 yield の注意**と**範囲外 `[n]` 無視**を追記。§4 に `retrieval` の**評価/診断モード**（融合前/後の両ランキング）を追加。§8 に Eval/judge のトレースを追記。`LANGFUSE_*` を任意化（§8/§9）。`web/` → `frontend/`（AGENTS v0.5 追従）。ヘッダの requirements 参照を v0.4 へ |
 | v0.3 | 2026-07-07 | チャット UI に **assistant-ui**（カスタムランタイム）を採用。§7 に SSE→ランタイムのマッピングと出典カードの generative UI 描画を追記。§1 構成図・§11 設計判断を更新。ChatKit 不採用の理由を明記 |
 | v0.2 | 2026-07-07 | requirements v0.2 追従: SaaS コネクタ・OAuth・connectors モジュール・worker/ARQ/Redis を削除。取り込みを CLI + BackgroundTasks に変更、`cli` モジュール追加。API から OAuth/connections 系を削除し sources/ingest 系に置換。全文検索を pg_bigm と明記。sync_runs → ingest_runs。Qdrant 比較を経た pgvector 採用理由を §11 に追記 |
