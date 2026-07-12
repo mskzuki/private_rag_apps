@@ -56,7 +56,6 @@ def retrieve_context(
 # ---------------------------------------------------------------------------
 
 @observe(name="embed_query")
-@observe(name="embed_query")
 def _embed_query(query: str) -> List[float]:
     """検索クエリを埋め込みモデル(Voyage)を用いてベクトル化する"""
     voyage_client = voyageai.Client(api_key=settings.voyage_api_key)
