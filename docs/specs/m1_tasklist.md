@@ -6,6 +6,8 @@
 **API 契約（`POST /api/chat` の `{content, citations}`）は M1 を通して不変**です。変更は検索段の内部に閉じます。
 
 > **M5監査（2026-07-13）**: 本タスクリストは `docs/specs/m1_hybrid_search.md` §7 Definition of Done の項目別エビデンス検証（すでに完了済み）を根拠に、実装ステップ単位で一括チェックした（bulk pass）。DoD検証で見つかった齟齬（`0002`マイグレーションのno-op化、APIのSSE化、全文検索SQL統合テストの欠如）は該当行に注記した。
+>
+> **M5追記（2026-07-13、実インフラでのライブラン時）**: 上記で「未実装」と記録していた統合テストの欠如が、実際に本番相当のバグを見逃していたことを確認した。`retrieval/searcher.py` の `_hybrid_search` が組み立てる生SQLで `c.embedding <=> :q_embedding::vector` のように bind パラメータ直後に `::` 型キャストを続けていたため、SQLAlchemy の `text()` が `:q_embedding` を bind パラメータとして認識できず（`::` 直前の `:` を bind マーカーとして扱わない既知の仕様）、`hybrid`/`hybrid_rerank` 戦略（**既定戦略**）が常に SQL 構文エラーで失敗する状態だった。`test_retrieval.py` は RRF 計算のロジックのみをモックで検証しており実 SQL には触れないため、この回帰は検出されなかった。`CAST(:q_embedding AS vector)` に修正し、実 DB に対する `retrieve_context(strategy="hybrid"/"hybrid_rerank")` の smoke test で解消を確認済み。
 
 - `[x]` **M1-1 データベース・マイグレーション**（確認: `backend/alembic/versions/0002_chunks_content_bigm.py` 実在）
   - `[x]` Alembic `0002` の作成: `chunks.content` への pg_bigm GIN 索引 `chunks_content_bigm`（`gin_bigm_ops`）（**要注記・実装との齟齬**: `0001_init.py`（73-76行）が同名索引を先に作成しているため、`0002` は `CREATE INDEX IF NOT EXISTS` による事実上のno-op。「ここは索引のみ」という次行の想定と異なり、索引自体は既にM0側の `0001_init` に含まれていた。マイグレーション適用後に索引が存在するという結果自体は正しい）
@@ -56,10 +58,10 @@
   - *テスト*: nDCG / MRR 計算の単体テスト（確認: `tests/evals/test_metrics.py::test_evaluate_retrieval_doc_dedup`, `::test_evaluate_retrieval_negative`）
 
 - `[x]` **M1-8 仕上げ**（部分確認）
-  - `[x]` `make lint` / `make test` の全通過（確認: `uv run ruff check .` を本監査で実行しPASS。pytestはDocker未起動のため未実行）
+  - `[x]` `make lint` / `make test` の全通過（確認: `uv run ruff check .` を本監査で実行しPASS。**M5追記（2026-07-13）**: Docker起動の上で `pytest` をDB込みでフル実行し69件全通過を確認済み）
   - `[ ]` PR に Eval before/after 比較表を記載（AGENTS §9） — **未チェック**: コードからは検証不能（`m1_hybrid_search.md` §7 の同項目参照）
   - `[x]` 計測結果に基づく §8 オープン論点（similarity_limit / FUSE_K / CANDIDATE_K）の判断をスペックに反映（確認: `m1_hybrid_search.md` §8 に「現在は0.3/40/50で実装を完了」の記述あり）
-  - `[ ]` README への結果表の反映（Definition of Success の布石） — **未チェック**: `README.md` を確認したがEval結果表（Recall@5等の実数値）の記載は見当たらない
+  - `[x]` README への結果表の反映（Definition of Success の布石） — **M5で置き換え（supersede）**: 個別の実数値テーブルをREADMEに直接掲載する当初想定は、M5のREADME設計（リンクのハブに徹し詳細は各文書に置く。重複を作らない）で置き換えられた。`README.md` の「Eval」節が `docs/eval_report.md`（実数値・詳細な推移を掲載）へ誘導する形になっており、Definition of Success の意図（Eval結果が追跡可能であること）はこの導線で満たされている
   - *完了条件*: `make lint` / `make test` が通り、before/after が記録・共有されていること。 — lint/testは確認、記録・共有の後半は未確認
 
 ---

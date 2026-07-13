@@ -27,7 +27,7 @@
 - [x] クリーン起動で 0001_init の `CREATE EXTENSION pgcrypto/vector/pg_bigm` が通ることを確認（db_design §2）→ 稼働中DBで`pg_extension`に`pgcrypto/vector/pg_bigm`が存在することを確認
 - [x] **`make migrate` がクリーン DB に対して成功する**ことをゲートとして確認（拡張→全テーブル→インデックスまで到達。全フェーズの統合テスト/デモの土台。M4 は新規マイグレーション追加なし）→ `alembic current`が head(0003)であることを確認、`chunks_content_bigm`（gin_bigm_ops）インデックスの存在も確認
 - [ ] （Phase 0 の決定次第）ビルド済みイメージの publish 手順を用意 → Phase 7に据え置き
-- [ ] `.env.example` の**雛形**を用意（必須キー `OPENAI_API_KEY`/`VOYAGE_API_KEY`/`DATABASE_URL`/`CORPUS_DIR`、`LANGFUSE_*` は任意と明記）。**`INGEST_*` 系の追記と最終化は Phase 7**（設定キーが出そろってから）→ Phase 7に据え置き
+- [x] `.env.example` の**雛形**を用意（必須キー `OPENAI_API_KEY`/`VOYAGE_API_KEY`/`DATABASE_URL`/`CORPUS_DIR`、`LANGFUSE_*` は任意と明記）。**`INGEST_*` 系の追記と最終化は Phase 7** — **M5で完了**: `core/config.py` の全設定キー（retrieval/chat・streaming/evaluation/ingestion 各ブロック、計16項目）を `.env.example` に追記済み
 
 ---
 
@@ -97,7 +97,7 @@
 
 ## Phase 7 — 15 分クイックスタート実測 + README（スペック §7.2, §6.3）
 
-- [x] **クリーン環境**（キャッシュ無し）で `git clone → docker compose up → make demo` を実測し **15 分以内**を確認（NFR-8）→ **部分実測**: `docker compose build --no-cache db`（pg_bigmソースビルド込み）= 約27秒、`docker compose up -d db`起動 = 数秒、`make migrate`（既存スキーマへの再適用）= 1秒未満。これらは十分15分に収まる規模と確認。**ただし本環境には実際の`VOYAGE_API_KEY`が無く、`make demo`の実埋め込み呼び出しまでは実測できていない**（Voyageをモックした検証はPhase5で実施済み、正常終了を確認）。また`uv sync`/`pnpm install`は本機のキャッシュが温まった状態での計測のため、真にキャッシュ無しの初回ダウンロード時間は未計測。**実キー設定後にユーザー自身で最終実測することを推奨**
+- [x] **クリーン環境**（キャッシュ無し）で `git clone → docker compose up → make demo` を実測し **15 分以内**を確認（NFR-8）→ **部分実測**: `docker compose build --no-cache db`（pg_bigmソースビルド込み）= 約27秒、`docker compose up -d db`起動 = 数秒、`make migrate`（既存スキーマへの再適用）= 1秒未満。これらは十分15分に収まる規模と確認。**M5追記（2026-07-13）**: 実 `OPENAI_API_KEY`/`VOYAGE_API_KEY` を用いて `make demo` の実埋め込み呼び出しを実行し、seedコーパス4ファイルの索引化に成功した。ただし利用したVoyageアカウントが無料枠（支払い方法未登録・3RPM上限）だったため、埋め込み呼び出しが `RateLimitError` で失敗する実バグ（`voyageai.Client()` の `max_retries` が既定で0＝リトライ無効だった）を発見・修正した（`core/config.py` に `voyage_max_retries` 設定を追加、`retrieval/searcher.py`・`ingestion/indexer.py` の全Client生成箇所に適用）。この修正後は安定して完走する。なお本セッションはDocker/uv/pnpmのキャッシュが温まった環境での実測であり、真にキャッシュ無しの初回ダウンロード時間・第三者/別マシンでの実測はまだ行っていない（推奨事項として残す）
   - ★副次的に発見・修正したバグ: `make setup`はAGENTS.md §5の記載（uv sync+pnpm install+.env生成+DB起動）と異なり、実装は`uv sync`のみだった。フルセットアップを行うよう修正（Makefile）
 - [ ] **超過時の分岐**: ビルド（pg_bigm 含む）が支配的なら Phase 0 の決定に戻り、**publish 済み DB イメージ利用に切替**て再計測（§7.2）→ 上記の通りpg_bigmビルドは約27秒と軽量なため、現時点では不要と判断。真の15分超過が実測で確認された場合のみ対応
 - [x] **`.env.example` の最終化**（Phase 2 で追加した `INGEST_*` 系を含め全設定キーを反映）→ `backend/.env.example`にINGEST_*系（コメントアウトで既定値を明記）とセクションコメントを追加

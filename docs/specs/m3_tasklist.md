@@ -73,14 +73,14 @@
 - [x] 機械可読レポート `evals/reports/<timestamp>.json`（各問スコア + 集計 + メタ）を出力 — `evals/__main__.py:225-233`
 - [ ] 人間可読サマリ Markdown（集計表・**リランク前/後比較**・negative 成否）を出力 — 集計表とリランク前/後比較は `__main__.py:191-212` の Markdown に含まれるが、**negative ケースの成否を個別に示す節は無い**（`results` 配列には残るが Markdown サマリには反映されない）
 - [ ] **provenance を記録**（埋め込み/次元・rerank・生成・judge モデル名・**生成/judge の temp・max_tokens**・検索パラメータ・**corpus ハッシュ**・**dataset version**・日時。§6.2）— モデル名・検索パラメータ・corpus ハッシュ・dataset version・日時は記録済み（`__main__.py:136-155`）が、**生成/judge の temp・max_tokens は provenance に含まれていない**（実際に固定もされていないため未達）
-- [ ] Langfuse への eval 実行コスト記録を確認（NFR-5。§9）— `@observe` デコレータは配線済み（judge/generation）だが、実行して Langfuse 上でコストが記録されることを確認した記録は無い（Langfuse 有効化＋実行が必要）
+- [ ] Langfuse への eval 実行コスト記録を確認（NFR-5。§9）— `@observe` デコレータは配線済み（judge/generation）。**M5追記（2026-07-13）**: 本セッションで `core/config.py` に実在した別バグ（`.env` のLangfuse鍵が `os.environ` へ反映されず計装が常にno-op化していた）を修正したが、`backend/.env` に設定されている鍵ペア自体がLangfuse API（EU/US両ホスト）で401 Unauthorizedを返すため、鍵を再発行しない限りこの項目は検証できない。引き続き未チェック
 - [ ] スモークテスト: 2〜3 問の極小データセットで end-to-end（外部呼び出しはモック）— **genuine gap**。`evals/__main__.py`（`run_eval`）を対象とするテストが見つからない
 
 ---
 
 ## Phase 5 — ベースライン確立と回帰検出（スペック §6.3, §7.3）
 
-- [ ] 現行構成で `make eval` を実行し、**committed baseline** `evals/baselines/current.json` を確立 — ファイル自体は存在するが、`aggregate` のみで `provenance`/`results` を含まず、値も丸い数字（recall_5=0.9 等）で実際の `make eval` 実行由来か確認できない。実行環境（Docker）が無いこのセッションでは検証不能のため未チェック
+- [x] 現行構成で `make eval` を実行し、**committed baseline** `evals/baselines/current.json` を確立 — **M5追記（2026-07-13）**: 以前の丸い数字のbaseline（`aggregate`のみ、provenance/results無し）は実行由来か確認できない疑わしい値だったため退避・削除し、Docker上で実 `make eval`（31問、実API）を実行して再生成した。新しい `current.json` は `provenance`（日時・corpus_hash・モデル名・検索パラメータ）と31問分の `results` を含む。詳細は [docs/eval_report.md](../eval_report.md) 参照
 - [ ] メトリクス別 tolerance（`EVAL_TOLERANCE_*`）の初期値を、実測のブレ幅を見て設定 — `core/config.py` に `eval_tolerance_*` 設定は存在せず、`evals/__main__.py:175,181` に `0.05`/`0.1` がハードコードされている。実測のブレ幅から設定した記録も無い
 - [x] baseline 比較ロジック（tolerance 超の低下を回帰として検出）を実装 — `evals/__main__.py:163-188`
 - [x] **検索指標=ハードゲート / 生成指標=ソフト**の判定方針を実装（§7.3）— 同上（reranked指標は `fail=True`→`sys.exit(1)`、生成指標は `warnings` リストに追加するのみで exit しない）
@@ -123,12 +123,12 @@
 ## Phase 9 — 仕上げ・受け入れ確認（スペック §11, §13）
 
 - [ ] スペック §11 の受け入れ条件をすべてチェック（データセット/検索指標/生成指標/ハーネス/CI/共通）— 本 M5 監査（2026-07-13）で大半をチェック済みだが、生成 decoding 固定・`EVAL_JUDGE_SAMPLES`平均・CI の pg_bigm 欠如・マルチターン非ゲート・Eval レポート公開など複数項目が未達のまま残っている（`m3_eval_expansion.md` §11 参照）
-- [ ] **M1 前後を含むスコア推移の Eval レポートを公開**（`docs/eval_report.md`。§12 Definition of Success）— **意図的に未チェック**。`docs/eval_report.md` は現時点で存在しない（実 DB に対する `make eval` 実行が必要。Docker 起動待ち＝M5 Phase 3）
+- [x] **M1 前後を含むスコア推移の Eval レポートを公開**（`docs/eval_report.md`。§12 Definition of Success）— **M5追記（2026-07-13）**: 実 `make eval` 実行結果（`backend/evals/reports/latest_summary.md`・`backend/evals/baselines/current.json`）を一次ソースとして `docs/eval_report.md` を作成・公開した。ただし fused/reranked の2段階比較にとどまり、spec §5.2 が理想とする「M0ベクトルのみ」との3段階比較は harness が対応しておらずレポート内で正直に明記している（詳細は同レポート§6）
 - [x] `requirements.md` §9/§NFR-1 を更新（path レベル正解・`EVAL_TOP_K` 分離・ゲート方針）— `requirements.md:143-144`
-- [x] `requirements.md` §12 に Eval レポート公開の具体パスを明記 — `requirements.md:285`（`docs/eval_report.md` と明記。※ このチェックボックス自体は requirements.md 側で `- [ ]` のまま、公開自体は未達）
+- [x] `requirements.md` §12 に Eval レポート公開の具体パスを明記 — `requirements.md:285`（`docs/eval_report.md` と明記。**M5追記**: `docs/eval_report.md` 自体も公開済みのため、`requirements.md` §12 側のチェックはCommit 8で反映する）
 - [x] `architecture.md` に評価フロー・judge の依存・**`retrieval` 診断モード**を追記（§4.2/§13）— `architecture.md:155,267`
 - [x] `AGENTS.md` §7/§9 に CI 実行経路・ゲート方針を反映 — AGENTS.md §7 に「Eval CI は再現経路をたどる（M3 以降）: DB 起動 → make migrate → make ingest（seed）→ make eval → committed baseline と比較。ゲートは検索指標=ハード / 生成指標=ソフト」と明記済み
-- [ ] `make lint` / `make test` が通ることを最終確認 — `make lint` は 2026-07-13 時点でクリーン（exit 0）。`make test` は `tests/evals/`（DB非依存10件）は全pass、DB接続を要する統合テストは本セッションで Postgres 未起動のため未確認（環境制約）
+- [x] `make lint` / `make test` が通ることを最終確認 — `make lint` は 2026-07-13 時点でクリーン（exit 0）。**M5追記（2026-07-13）**: Docker起動の上で `pytest` をDB込みでフル実行し69件全通過を確認済み。ただしこの通過は `retrieval/searcher.py` の実SQLバグ（`m1_tasklist.md` M5追記参照）を検出できておらず、`make eval` の実行で初めて判明した。テストスイートの実SQL網羅性には既知の穴がある
 - [x] 依存方向（LLM は generation・evals のみ）を最終確認 — `retrieval/searcher.py`・`evals/metrics.py`・`evals/schema.py` に LLM 呼び出しなし。LLM呼び出しは `evals/judge.py`（openai）と `generation/generator.py`（openai）に限定
 
 ---

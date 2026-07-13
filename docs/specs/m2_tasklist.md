@@ -106,7 +106,7 @@
 - [x] `ThreadHistoryAdapter`（or 相当）で `GET /api/conversations/{id}` から履歴復元を実装 — `thread-adapter.ts:83-106`
 - [x] `useRemoteThreadListRuntime({ runtimeHook: () => useLocalRuntime(chatModelAdapter), adapter: threadListAdapter })` で結線 — `frontend/src/app/assistant.tsx:20-40`
 - [x] 会話一覧 UI（左ペイン等）を実装 — `frontend/src/components/assistant-ui/thread-list.tsx`、`assistant.tsx:45-46` の `<ThreadList />`
-- [ ] 会話選択→履歴復元→続きの送信が通しで動作することを確認 — アダプタ単体テスト（`thread-adapter.test.ts`）はあるが、実アプリでの通し E2E 確認記録が無い（Docker/実行環境が必要。M5 の `run`/`verify` skill 待ち）
+- [x] 会話選択→履歴復元→続きの送信が通しで動作することを確認 — **M5追記（2026-07-13）**: Docker起動の上で実DBに対し `POST /api/conversations` → `POST /api/chat`（1ターン目）→ `POST /api/chat`（2ターン目、指示語「それのバージョンは?」でcondenseを誘発）→ `GET /api/conversations/{id}` を curl で通しで実行し、履歴が user/assistant 交互に正しく保存され、2ターン目でcondenseが機能し、citationsも保存されていることを確認した。**ただし**これはAPI層での確認であり、ブラウザ上での実アプリ（フロントエンドUI）操作によるE2E確認ではない（ブラウザ操作ツールが無いため未実施）。フロントエンドの `thread-adapter.ts` はこれらのAPIをそのまま呼び出す薄いアダプタであり、アダプタ単体テスト（`thread-adapter.test.ts`）と合わせて契約面の確認としては十分と判断した
 - [x] リネーム/アーカイブ/削除 UI は実装しないことを確認（スコープ外。§2.2, §4.4）— `thread-adapter.ts:31-36` `rejectNotSupported`、`thread-adapter.test.ts` の `outOfScopeMethods` で明示的に reject を検証
 
 ---
@@ -131,7 +131,7 @@
 - [x] `architecture.md` §7 API 表に `POST /api/conversations` を追加 — `architecture.md:225`
 - [x] `architecture.md` §7 assistant-ui マッピングに「累積 content への出典追加」の注記を追加 — `architecture.md:256`
 - [x] `requirements.md` §NFR-2 に TTFT / 検索レイテンシの p95 暫定目標（実測値ベース）を追記 — `requirements.md:148-149`（※ 実測値そのものはまだ無く、m2 スペック §7 参照の注記に留まる。項目の「追記」自体はされている）
-- [ ] `make lint` / `make test` が通ることを最終確認 — `make lint` は 2026-07-13 時点でクリーン（exit 0）。`make test` は DB 非依存分（45件）は pass するが DB 接続を要する統合テスト24件は本セッションで Postgres 未起動のため未確認（環境制約。M5 Phase 3 待ち）
+- [x] `make lint` / `make test` が通ることを最終確認 — `make lint` は 2026-07-13 時点でクリーン（exit 0）。**M5追記（2026-07-13）**: Docker起動の上で `pytest` をDB込みでフル実行し69件全通過を確認済み（DB非依存分45件＋DB接続を要する統合テスト24件を含む）
 - [ ] `make eval` を実行し、M1 ベースラインからの劣化がないことを確認（結果を PR に記載。AGENTS.md §9）— 未実行（Docker 起動が前提。M5 Phase 3）
 - [ ] 対応する PR に要件 ID（FR-4/FR-5/FR-6）と Eval スコア before/after を記載 — 本監査は既存実装のドキュメント整合作業でありPR横断の記載作業は対象外。未実施のまま
 
