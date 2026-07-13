@@ -280,12 +280,14 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 ## 12. Definition of Success(ショーケースとしての完成条件)
 
-- [ ] README: クイックスタート(NFR-8 準拠)+ デモ GIF + アーキテクチャ図
-- [ ] `make demo` がクリーン環境で 15 分以内に成功する
-- [ ] Eval レポート(30〜50 問、M1 前後の before/after を含むスコア推移)が **`docs/eval_report.md`** として公開されている
-- [ ] Langfuse トレースのスクリーンショット/説明がドキュメントにある
-- [ ] 設計文書一式(requirements / architecture / db_design / AGENTS)が実装と一致している
-- [ ] M0〜M5 完了
+> **クローズ判断（2026-07-13）**: デモGIF・Langfuseスクリーンショット・別マシンでの真クリーンルーム実測はブラウザ操作/別マシンを要しエージェントでは実施できないため、プロジェクトオーナーの判断で意図的に先送りした上で完了とする。根拠は [docs/decisions.md](decisions.md#m5クローズ範囲の判断スクショgif別マシン実測ci実行確認を先送り) 参照。
+
+- [x] README: クイックスタート(NFR-8 準拠)+ デモ GIF + アーキテクチャ図 — クイックスタート・アーキ図は完備（[README.md](../README.md)）。デモGIFは意図的に先送り（[docs/assets/README.md](assets/README.md)に撮影手順）
+- [x] `make demo` がクリーン環境で 15 分以内に成功する — 実キーでの動作確認は完了。新規clone・キャッシュ無しの真クリーンルーム実測・別マシン実走は意図的に先送り
+- [x] Eval レポート(30〜50 問、M1 前後の before/after を含むスコア推移)が **`docs/eval_report.md`** として公開されている — 実 `make eval`（31問）の結果で公開済み（[docs/eval_report.md](eval_report.md)）
+- [x] Langfuse トレースのスクリーンショット/説明がドキュメントにある — 説明は完備（[docs/observability.md](observability.md)）。スクリーンショット3枚は意図的に先送り
+- [x] 設計文書一式(requirements / architecture / db_design / AGENTS)が実装と一致している — `docs/specs/mN_tasklist.md` 群での監査・是正済み
+- [x] M0〜M5 完了 — 上記の意図的な先送り事項を含めた上での完了
 
 ---
 
@@ -293,6 +295,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.6 | 2026-07-13 | §12 Definition of Success の各項目をクローズ。デモGIF・Langfuseスクショ・別マシン実測は意図的な先送りとして注記（根拠は `docs/decisions.md`） |
 | v0.5 | 2026-07-09 | §7 技術選定をフロントエンド（§7.1）/ バックエンド（§7.2）の 2 表に分割（内容変更なし） |
 | v0.4 | 2026-07-08 | 全体レビュー反映: Python を 3.13 に更新（AGENTS v0.6 との矛盾解消）。**Langfuse を任意化**（NFR-4 no-op / NFR-8 必須アカウントから除外）。M2 スペック追従: NFR-2 に初回/フォローアップ別計測を明記。M3 スペック追従: NFR-1/§9 に **path レベル正解（chunk_id 非依存）**・`EVAL_TOP_K` 分離・**検索ハード/生成ソフトのゲート**・committed baseline・CI トリガ範囲拡大を反映。FR-4 に棄権（abstain）の実体を注記。§10 M0 に**基本 CI(lint/test)** を追加。§12 に Eval レポート公開パスを明記。ヘッダのドラフト表記を除去 |
 | v0.3 | 2026-07-07 | チャット UI ライブラリに assistant-ui を採用（§7 に行追加）。ChatKit は OpenAI API 密結合のため不採用 |
