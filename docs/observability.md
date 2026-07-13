@@ -1,6 +1,8 @@
 # 可観測性（Langfuse トレース）
 
 > **スクリーンショットは作成中**: 3枚（chat / ingestion / eval）は M5 Phase 4（`docs/specs/m5_showcase_finishing.md` §6）で、Langfuse を有効化した実行から取得し次第この節に追加します。構成・span名は実装済みコードから確認済みです。
+>
+> **現状の既知の問題（2026-07-13時点）**: `backend/.env` に設定されている Langfuse の鍵ペアで API に到達すると、EU/US いずれのホスト（`https://cloud.langfuse.com` / `https://us.cloud.langfuse.com`）でも `401 Unauthorized` が返る（リージョンの問題ではなく鍵自体が無効/失効している可能性が高い）。そのため本セッションでは実トレースの取得・スクリーンショット撮影ができていない。鍵を再発行・更新すれば、以下の計装（`@observe()`）はコード上は正しく動作する状態になっている（`core/config.py` が `.env` の値を `os.environ` へ反映する形に修正済み。以前はこの反映が無く、鍵を設定しても計装が有効化されない別のバグがあった）。
 
 ## Langfuse を有効化する
 
