@@ -1,5 +1,24 @@
 # バックエンドコードレビュー: M4 増分再取り込み・API/CLI 変更
 
+> **解決状況（追記）**: 本レビューはコミット前の作業差分に対して書かれたが、指摘の大半は `254834b`（コーパス取込み、チャンク、ベクトル化の処理を追加）として反映済みの状態でコミットされていた（レビュー文書自体の更新のみが漏れていた）。残っていた D-12・D-13 は本追記と同時期のコミットで解消した。以下、原文は提出時点の記録として保持する。
+>
+> | 指摘 | 状態 | 備考 |
+> |---|---|---|
+> | A-1（安全弁作動時に `run.status` を全体errorにする） | ✅ 解決済み | `254834b`。`_apply_deletion_phase` が `status="success"` を維持し理由を `error` に記録。決定は `m4_ingestion_and_demo.md` §13 に明記 |
+> | A-2（`reset_index` がadvisory lockを取らない） | ✅ 解決済み | `254834b`。`acquire_start_lock`/`get_running_run`/`reap_stale_running` を共有ヘルパ化し `start_run`・`reset_index` 双方から使用 |
+> | A-3（CLIが `os.environ` を直読みしchoicesを回避） | ✅ 解決済み | `254834b`。`core.config.Settings` に `ingest_trigger: Literal["cli","demo"]` / `force_delete: bool` を追加 |
+> | B-4（戻り値型注釈の欠如） | ✅ 解決済み | `254834b`。5関数すべてに戻り値型（専用TypedDictを含む）を付与 |
+> | B-5（`Any` の使用） | ✅ 解決済み | `254834b`。`Stats` をTypedDict化、`source_id` を `uuid.UUID` 化 |
+> | C-6（UTC now の重複実装） | ✅ 解決済み | `254834b`。`core.time.utcnow()` に共通化 |
+> | C-7（`func` の重複import） | ✅ 解決済み | `254834b` |
+> | C-8（埋め込みモデル名のハードコード） | ✅ 解決済み | `254834b`。`settings.embed_model` に統一（indexer/searcher共有） |
+> | C-9（安全弁ブロックがヘルパ未抽出） | ✅ 解決済み | `254834b`。`_apply_deletion_phase` として抽出 |
+> | C-10（CLIがrun.status/errorを握りつぶす） | ✅ 解決済み | `254834b`。`status=="error"` 時に stderr 出力+非ゼロ終了 |
+> | D-11（`test_ingest_api.py` の `finally`/`NameError` リスク） | ✅ 解決済み | `254834b`。`body` を `try` の前に取得し `finally` は `.get()` を使用 |
+> | D-12（advisory lockの実並行性テスト欠如） | ✅ 解決済み | 本追記と同時期のコミットで `test_start_run_advisory_lock_serializes_concurrent_starts` を追加 |
+> | D-13（`_cleanup` の無条件全削除） | ✅ 解決済み | 本追記と同時期のコミットで `run_ids` による範囲指定に変更 |
+> | E（`m4_tasklist.md` Phase8/changelog不整合） | ✅ 解決済み | `m4_tasklist.md` v0.5 changelogで解消（Phase 8は5/7チェック済み、残り2件は理由付きで意図的に対象外） |
+
 ## Context（背景）
 
 バックエンドのコードレビュー依頼を受けた。現在 git 上に M4（増分再取り込み・コーパス管理API・デモモード仕上げ）関連の未コミット差分が存在する：
