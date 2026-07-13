@@ -15,8 +15,8 @@
 1. `cp backend/.env.example backend/.env` して `OPENAI_API_KEY` / `VOYAGE_API_KEY` を設定
 2. `make setup`（uv sync / pnpm install / `.env` 生成（既にあれば何もしない）/ PostgreSQL(pgvector+pg_bigm) コンテナ起動）
 3. `make demo`（マイグレーション適用 → seed コーパス（`seed/corpus/`）を取り込み。2回目以降は無変更ファイルをスキップするため高速）
-4. 別ターミナルで `make api`（FastAPI起動、http://localhost:8000）
-5. 別ターミナルで `make web`（Next.js起動、http://localhost:3000 でチャット画面）
+4. 別ターミナルで `make api`（FastAPI起動、`http://localhost:8000`）
+5. 別ターミナルで `make web`（Next.js起動、`http://localhost:3000` でチャット画面）
 
 `GET http://localhost:8000/health` または `POST http://localhost:8000/api/chat` で疎通確認が可能です。データ管理画面（ソース一覧・再取り込み・インデックス初期化）は http://localhost:3000/sources から利用できます。
 
