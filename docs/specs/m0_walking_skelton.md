@@ -174,16 +174,18 @@ LIMIT 5;
 
 ## 7. Definition of Done（M0）
 
-- [ ] `docker compose up` で pgvector + pg_bigm 入り Postgres が起動する
-- [ ] `make migrate` が `0001_init` を適用する
-- [ ] `make demo` が設計文書を取り込み、`sources`/`chunks` が埋まり、`ingest_runs` に成功記録が残る
-- [ ] `POST /api/chat`（コーパス内）が出典付き JSON を返す（S2）
-- [ ] `POST /api/chat`（コーパス外）が「見つからない」を返す（S3）
-- [ ] Langfuse に `embed_query`/`retrieve`/`generate` スパン + token/cost が出る（S4）
-- [ ] `make eval` が Recall@5 を出しベースライン記録（S5）
-- [ ] `make lint` / `make test` が通る（チャンキング・検索SQL・引用整形をカバー、LLM/埋め込みはモック）
-- [ ] 依存方向ルール（AGENTS §3）を守っている
-- [ ] シークレット・実データを含まない（同梱は `seed/` のみ）
+> M5監査（2026-07-13）: 現行コード（`backend/src/private_rag_apps/`）に対して項目ごとに検証し、根拠を付記した。
+
+- [x] `docker compose up` で pgvector + pg_bigm 入り Postgres が起動する（確認: `docker-compose.yml` の `db` サービスが `backend/docker/db/Dockerfile.local` をビルド。同 Dockerfile は `pgvector/pgvector:pg16` ベースに pg_bigm をソースからビルドして組み込み）
+- [x] `make migrate` が `0001_init` を適用する（確認: `Makefile:16-17` の `migrate` → `alembic upgrade head`、`backend/alembic/versions/0001_init.py` が拡張・テーブル・索引を作成）
+- [x] `make demo` が設計文書を取り込み、`sources`/`chunks` が埋まり、`ingest_runs` に成功記録が残る（確認: `Makefile:26-27` の `demo` → `ingest --trigger demo`、`ingestion/indexer.py:execute_ingestion` が Source/Chunk 行を作成し `run.status = "success"` を設定（indexer.py:82）。`seed/corpus/` に AGENTS.md / architecture.md / db_design.md / requirements.md が実在）
+- [ ] `POST /api/chat`（コーパス内）が出典付き JSON を返す（S2） — **未チェック**: 現行の `api/main.py:123` `chat()` は本スペックが想定する非ストリームJSON応答ではなく、`EventSourceResponse` によるSSEストリーミングに置き換わっている（本スペック§2 out-of-scopeテーブルどおりM2でSSE化された、想定内の進化）。出典自体は `citations` イベント（`generator.py:47-57`）、本文は `token` イベントで配信され内容面（出典付き回答）は満たすが、字句通りの「非ストリームJSON応答」ではないため未達として記録
+- [ ] `POST /api/chat`（コーパス外）が「見つからない」を返す（S3） — **未チェック**: 上と同じ理由でSSE化により応答形式が本スペック記述と不一致。フォールバック機構自体（システムプロンプトの指示 `prompts/rag.py:3`、空コンテキスト時のガード `generator.py:42-45`）は存在し機能している
+- [x] Langfuse に `embed_query`/`retrieve`/`generate` スパン + token/cost が出る（S4）（確認: `retrieval/searcher.py:58` `@observe(name="embed_query")`、`searcher.py:10` `@observe(name="retrieve_context")`、`generation/generator.py:8,39` `@observe(as_type="generation")`。M1以降 `retrieve` は `vector_search`/`hybrid_search`/`rerank` に細分化されているが、token/cost記録は維持）
+- [x] `make eval` が Recall@5 を出しベースライン記録（S5）（確認: `evals/metrics.py:53` が `recall_5` を算出、`evals/__main__.py:164-188` がbaselineと比較・`evals/baselines/current.json` へ記録。M3統合ハーネスに引き継がれ質問数・保存先は変わったが指標自体は継続）
+- [x] `make lint` / `make test` が通る（チャンキング・検索SQL・引用整形をカバー、LLM/埋め込みはモック）（確認: `cd backend && uv run ruff check .` 実行しPASS。チャンキング: `tests/test_basic.py::TestChunkMarkdown`。引用整形: `tests/test_basic.py::TestCitationFormatting`。LLM/埋め込みモック: `tests/test_chat.py`。mypyおよびDB依存テスト（`test_ingestion_indexer.py`等）はDocker未起動のため本監査では未実行、ファイル存在と内容のみ確認）
+- [x] 依存方向ルール（AGENTS §3）を守っている（確認: grepで `retrieval/searcher.py` から `ingestion`/`generation` へのimportなし、LLM呼び出しは `generation/`・`evals/` に限定、埋め込み呼び出しは `ingestion/`・`retrieval/` に限定、rerank呼び出しは `retrieval/` に限定）
+- [x] シークレット・実データを含まない（同梱は `seed/` のみ）（確認: `.gitignore:2` に `.env`、`git ls-files` に `.env` なし、`backend/src` にAPIキーのハードコードなし、`seed/corpus/` は設計文書のみ）
 
 ---
 

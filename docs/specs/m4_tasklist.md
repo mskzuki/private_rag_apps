@@ -27,7 +27,7 @@
 - [x] クリーン起動で 0001_init の `CREATE EXTENSION pgcrypto/vector/pg_bigm` が通ることを確認（db_design §2）→ 稼働中DBで`pg_extension`に`pgcrypto/vector/pg_bigm`が存在することを確認
 - [x] **`make migrate` がクリーン DB に対して成功する**ことをゲートとして確認（拡張→全テーブル→インデックスまで到達。全フェーズの統合テスト/デモの土台。M4 は新規マイグレーション追加なし）→ `alembic current`が head(0003)であることを確認、`chunks_content_bigm`（gin_bigm_ops）インデックスの存在も確認
 - [ ] （Phase 0 の決定次第）ビルド済みイメージの publish 手順を用意 → Phase 7に据え置き
-- [ ] `.env.example` の**雛形**を用意（必須キー `ANTHROPIC_API_KEY`/`VOYAGE_API_KEY`/`DATABASE_URL`/`CORPUS_DIR`、`LANGFUSE_*` は任意と明記）。**`INGEST_*` 系の追記と最終化は Phase 7**（設定キーが出そろってから）→ Phase 7に据え置き
+- [ ] `.env.example` の**雛形**を用意（必須キー `OPENAI_API_KEY`/`VOYAGE_API_KEY`/`DATABASE_URL`/`CORPUS_DIR`、`LANGFUSE_*` は任意と明記）。**`INGEST_*` 系の追記と最終化は Phase 7**（設定キーが出そろってから）→ Phase 7に据え置き
 
 ---
 

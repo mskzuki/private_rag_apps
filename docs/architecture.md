@@ -273,7 +273,7 @@ sequenceDiagram
 ## 9. 設定とシークレット
 
 - `core/config.py`（pydantic-settings）で一元管理。値のハードコード禁止
-- 必須キー: `ANTHROPIC_API_KEY` / `VOYAGE_API_KEY` / `DATABASE_URL` / `CORPUS_DIR`（`LANGFUSE_*` は**任意**・未設定時は計装 no-op。§8）
+- 必須キー: `OPENAI_API_KEY` / `VOYAGE_API_KEY` / `DATABASE_URL` / `CORPUS_DIR`（`LANGFUSE_*` は**任意**・未設定時は計装 no-op。§8）
 - 増分再取り込み関連（すべて任意・既定値あり）: `INGEST_DELETE_GUARD_RATIO` / `INGEST_ADVISORY_LOCK_KEY` / `INGEST_STALE_RUNNING_SEC` / `INGEST_STATS_FLUSH_EVERY` / `INGEST_EMBED_BATCH_SIZE`
 
 ---

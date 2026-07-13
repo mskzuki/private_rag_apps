@@ -224,7 +224,7 @@ CI ジョブは本番と同じクリーン経路をたどる:
 3. `make eval` 実行 → レポート生成 → baseline 比較
 4. before/after を **PR に自動記載**（コメント or artifact。AGENTS.md §9）
 
-- **API キーは CI シークレット**（`ANTHROPIC_API_KEY` / `VOYAGE_API_KEY`）。Langfuse キーは任意（未設定でも eval は動く）。
+- **API キーは CI シークレット**（`OPENAI_API_KEY` / `VOYAGE_API_KEY`）。Langfuse キーは任意（未設定でも eval は動く）。
 - **コスト**: 30〜50 問 ×（embed + 検索 + rerank + 生成 + judge×samples）。小規模・上限が読めるため CI 実行を許容。judge は軽量モデルでコストを抑える（NFR-5）。
 
 ### 7.3 ゲート方針（検索は硬め・生成は柔らかめ）
@@ -283,36 +283,36 @@ CI ジョブは本番と同じクリーン経路をたどる:
 満たして初めて M3 完了とする（AGENTS.md §10 DoD に加えて）。
 
 **データセット（§9 / NFR-1）**
-- [ ] ゴールデンデータセットが 30〜50 問あり、negative（不知期待）ケースを含む
-- [ ] 正解ラベルが **path（+任意 heading）レベル**で表現され、chunk_id に依存しない
-- [ ] 実データを含まず seed 由来のみ（NFR-3）／dataset に version がある
+- [x] ゴールデンデータセットが 30〜50 問あり、negative（不知期待）ケースを含む — `backend/evals/dataset/m3_golden.jsonl`（31問、`tags` 内訳: lookup 24 / synthesis 4 / negative 3。うち `turns` 付きマルチターン項目1問）
+- [x] 正解ラベルが **path（+任意 heading）レベル**で表現され、chunk_id に依存しない — `evals/schema.py:8-11` `RelevantDoc(path, heading, grade)` に `chunk_id` フィールドは存在しない
+- [x] 実データを含まず seed 由来のみ（NFR-3）／dataset に version がある — 収録データは seed/`db_design.md`/`requirements.md` 等の設計文書由来のみ。`version` は各アイテムの JSON フィールドとしては持たないが、ファイル名（`m3_golden.jsonl`）＋ハーネス側の `provenance["dataset_version"]="m3_golden"`（`evals/__main__.py:138`）で一貫してトラッキングされている
 
 **検索指標（NFR-1）**
-- [ ] Recall@5 / Recall@10 / nDCG@10 / MRR を算出できる（**`@k` は取得チャンクリスト基準**、正解は path 写像、**doc-dedup で二重計上しない**）
-- [ ] `retrieval` の診断 API が **融合直後リストとリランク後リストの両方**を返し、リランク前/後の指標を出せる
-- [ ] `EVAL_TOP_K ≥ 10` で Recall@10 が測れる／評価時 `ef_search` を大きめ固定して recall 揺れを抑えている
+- [x] Recall@5 / Recall@10 / nDCG@10 / MRR を算出できる（**`@k` は取得チャンクリスト基準**、正解は path 写像、**doc-dedup で二重計上しない**）— `evals/metrics.py:5-57` `evaluate_retrieval()`。`tests/evals/test_metrics.py::test_evaluate_retrieval_doc_dedup` で doc-dedup を検証
+- [x] `retrieval` の診断 API が **融合直後リストとリランク後リストの両方**を返し、リランク前/後の指標を出せる — `retrieval/searcher.py` の `retrieve_context(..., diagnostic_mode=True)` が `{"fused_ranking":..., "reranked_ranking":...}` を返す
+- [x] `EVAL_TOP_K ≥ 10` で Recall@10 が測れる／評価時 `ef_search` を大きめ固定して recall 揺れを抑えている — `core/config.py:36-37` `eval_top_k: int = 12`, `eval_ef_search: int = 100`（本番用 `candidate_k`/`rrf_k`/`fuse_k`/`rerank_top_k` とは別設定として分離されている）
 
 **生成指標（NFR-1 / NFR-6）**
-- [ ] Faithfulness / Answer Relevance を LLM-as-judge で算出（判定モデル名を記録）
-- [ ] 判定プロンプトが `prompts/` にあり、構造化出力をパースしている
-- [ ] **評価時は被評価側の生成も temp=0・max_tokens 固定**で走り、その値が provenance に記録される
-- [ ] negative ケースで「弱いコンテキストでの棄権（abstain）」の正しさを判定できる
+- [x] Faithfulness / Answer Relevance を LLM-as-judge で算出（判定モデル名を記録）— `evals/judge.py:44-53`、`provenance["models"]["judge"]=settings.judge_model`（`__main__.py:153`）
+- [x] 判定プロンプトが `prompts/` にあり、構造化出力をパースしている — `prompts/judge.py`（`JUDGE_FAITHFULNESS_PROMPT`/`JUDGE_ANSWER_RELEVANCE_PROMPT`）、`evals/judge.py:8-42` `_call_judge()` がJSON抽出・パースし、`tests/evals/test_judge.py` が正常/markdown/不正JSONを検証
+- [ ] **評価時は被評価側の生成も temp=0・max_tokens 固定**で走り、その値が provenance に記録される — **genuine gap**。`EVAL_GEN_TEMPERATURE`/`EVAL_GEN_MAX_TOKENS` は `core/config.py` に存在するが、`evals/__main__.py:28-34` の `get_answer()` のコメントで明言されている通り `generate_answer_stream()` は temp/max_tokens の上書きを受け付けず、実際には固定されていない。provenance にもこれらの値は記録されていない（`__main__.py:136-155` の `provenance` dict に該当フィールド無し）
+- [x] negative ケースで「弱いコンテキストでの棄権（abstain）」の正しさを判定できる — `prompts/judge.py:8,31` の Faithfulness/Answer Relevance プロンプトが「見つからない」の正しい返答を1点・誤った断定を0点とする採点基準を明記。ただし専用のユニットテストは無い
 
 **ハーネス・レポート（§9 / §12）**
-- [ ] `make eval` がデータセット→検索→指標→生成→判定→レポートを通しで実行する
-- [ ] レポートに provenance（各モデル名・検索パラメータ・corpus ハッシュ・dataset version）が記録される
-- [ ] committed baseline との比較で回帰を検出できる
-- [ ] M1 前後を含むスコア推移の **Eval レポートが公開**されている（§12）
+- [x] `make eval` がデータセット→検索→指標→生成→判定→レポートを通しで実行する — `evals/__main__.py:42-243` `run_eval()`
+- [x] レポートに provenance（各モデル名・検索パラメータ・corpus ハッシュ・dataset version）が記録される — `__main__.py:136-155`（embed/rerank フィールドを含め本 M5 セッションで追加済み。ただし `embed_dims`/`rerank` はハードコード値であり `settings` からの動的取得ではない旨がコード中コメントに明記）
+- [x] committed baseline との比較で回帰を検出できる — `evals/baselines/current.json` が存在し、`__main__.py:163-188` で比較ロジックが実装されている。※ 現状の `current.json` の数値は丸い値（0.9/0.95等）で実 `make eval` 実行由来か未確認（実行は Docker 起動待ち）
+- [ ] M1 前後を含むスコア推移の **Eval レポートが公開**されている（§12）— **未達（意図的に未チェック）**。`docs/eval_report.md` は現時点で存在しない。生成には実 DB に対する `make eval` 実行が必要で、Docker 起動が前提の M5 Phase 3 待ち
 
 **CI（§9 / AGENTS.md §7・§9・§11）**
-- [ ] 対象パス（prompts/retrieval/ingestion/generation/evals）変更 PR で Eval が自動実行される
-- [ ] CI が migrate→ingest(seed)→eval の再現経路をたどる（NFR-8）
-- [ ] 検索指標はハードゲート、生成指標はソフト（tolerance 設定済み）
-- [ ] before/after が PR に自動記載される
+- [x] 対象パス（prompts/retrieval/ingestion/generation/evals）変更 PR で Eval が自動実行される — `.github/workflows/eval.yml:3-12` の `on.pull_request.paths` がスペック §7.1 の全パス（+`core/config.py`）と一致
+- [ ] CI が migrate→ingest(seed)→eval の再現経路をたどる（NFR-8）— ステップ自体（migrate→ingest→eval）は `.github/workflows/eval.yml:48-69` に存在するが、**genuine gap**: DB サービスに `pgvector/pgvector:pg16`（無印）を使っており、pg_bigm 拡張が入っていない。`0001_init.py` の `CREATE EXTENSION IF NOT EXISTS "pg_bigm"` はこのイメージでは失敗する見込み（ローカルの `docker-compose.yml`/AGENTS.md §4 が明記する通り、pg_bigm 入りは `backend/docker/db/Dockerfile.local` でソースビルドしたカスタムイメージが必要）。CI が実際に緑になるかは要確認・要修正
+- [x] 検索指標はハードゲート、生成指標はソフト（tolerance 設定済み）— `__main__.py:172-183`（reranked 指標の低下 > 0.05 で fail、generation 指標の低下 > 0.1 で warn）。※ tolerance はスペック §10 が想定する `EVAL_TOLERANCE_*` 設定ではなく `__main__.py` にハードコードされている（`core/config.py` に `eval_tolerance_*` は存在しない。AGENTS.md §6 のハードコード禁止からは軽微な逸脱）
+- [x] before/after が PR に自動記載される — `.github/workflows/eval.yml:71-86`（`docs/eval_report.md` が存在すれば `github-script` で PR コメントとして投稿）
 
 **共通（AGENTS.md §10）**
-- [ ] `make lint` / `make test` が通る／依存方向（LLM は generation・evals のみ）を守る
-- [ ] 本スペック §13 の上位ドキュメント反映が済んでいる
+- [ ] `make lint` / `make test` が通る／依存方向（LLM は generation・evals のみ）を守る — `make lint` は 2026-07-13 時点でクリーン（exit 0）。`make test` は `tests/evals/`（DB非依存、10件）は全 pass するが、DB 接続を要する統合テストは本セッションで Postgres 未起動のため未確認。依存方向は確認済み（`retrieval/searcher.py` は generation/ingestion を import せず、evals は generation/retrieval を呼ぶのみで LLM 呼び出しは `evals/judge.py`・`generation/generator.py` に限定）だが、test 側が環境制約で未完了のため全体は未チェック
+- [x] 本スペック §13 の上位ドキュメント反映が済んでいる — `requirements.md` v0.4（L143-144,247,285,297）・`architecture.md` v0.4（L155,267,312）・`AGENTS.md` §7 がいずれも path レベル正解・`EVAL_TOP_K` 分離・ハード/ソフトゲート・再現経路・`docs/eval_report.md` パスを反映済み
 
 ---
 

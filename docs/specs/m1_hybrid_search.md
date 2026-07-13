@@ -176,7 +176,7 @@ trace(chat)
   - **Recall@5 / Recall@10** — top-k に期待ソース由来チャンクが1つ以上入った質問の割合
   - **nDCG@10** — 期待ソース由来チャンクの順位品質（リランクの効果が出る指標）
   - **MRR** — 最初に期待ソース由来チャンクが現れた順位の逆数の平均
-- **モード横断**: `vector` / `hybrid` / `hybrid_rerank` の3モードで全指標を算出
+- **モード横断**: `vector` / `hybrid` / `hybrid_rerank` の3モードで全指標を算出（計画時点の想定。**実装上の補足**を参照）
 - **出力**: 下記の比較表を標準出力 + `evals/results/m1_<timestamp>.json` に保存
 - **記録**: この before/after を **PR に貼る**（AGENTS §9）
 
@@ -190,6 +190,8 @@ trace(chat)
 
 > 期待: 語彙一致で hybrid が Recall を、rerank が nDCG@10 / MRR（順位品質）を押し上げる。この差分がショーケースの見せ場。
 
+> **実装上の補足（M5監査で反映）**: 独立した M1 専用 Eval スクリプトは作られず、M3 で構築された統合ハーネス（`backend/src/private_rag_apps/evals/__main__.py`、データセットも10問→31問に拡充）にこの比較機能が統合された。実装された比較軸は `fused`（RRF融合直後）/`reranked`（リランク後）の**2レッグ**のみで、`vector`単体のパスは実装されていない（`retrieve_context(..., diagnostic_mode=True)` が返すのは `fused_ranking`/`reranked_ranking` の2つ）。vector単体はhybridに包含される（hybridはvector一致に語彙一致を追加するだけ）ため実務上の簡略化と判断し、この3モード比較は「計画」として残しつつ、実際の before/after は§7 DoDの通り2レッグ比較で扱う。出力先も `evals/results/m1_*.json` ではなく `backend/evals/reports/m3_*.json`（+ `docs/eval_report.md`）に統合されている。vector単体の実測が必要になった場合はM3側のフォローアップとして切り出す。
+
 ---
 
 ## 6. タスク分解（実装順）
@@ -202,22 +204,24 @@ trace(chat)
 | **M1-4** | リランク: Voyage rerank-2.5 連携 + `hybrid_rerank` モード（top_k=8） | rerank 後の順序で top_k が返る（rerank はモック可のテスト） |
 | **M1-5** | 生成配線: top_k=8 を context に。**API 契約は不変**を担保 | S3（M0 シナリオ）が引き続き成立 |
 | **M1-6** | 可観測性: `vector_search`/`fts_search`/`rrf_fuse`/`rerank` スパン + rerank コスト | S4 が成立 |
-| **M1-7** | Eval: 3モード横断で Recall@5/@10・nDCG@10・MRR、比較表出力 + 保存 | S5 が成立、before/after 記録 |
+| **M1-7** | Eval: fused/reranked の2レッグ横断で Recall@5/@10・nDCG@10・MRR、比較表出力 + 保存（M3統合ハーネスで実現） | S5 が成立、before/after 記録 |
 | **M1-8** | テスト + ドキュメント更新（結果表を PR/README に反映） | `make lint`/`make test` が通る |
 
 ---
 
 ## 7. Definition of Done（M1）
 
-- [ ] `0002` マイグレーションが適用され pg_bigm GIN 索引が存在する
-- [ ] `hybrid_rerank` で融合 + リランク後の top_k が生成に渡る（S1）
-- [ ] 片側検索が0件でも例外なく回答する（S2）
-- [ ] `POST /api/chat` の応答形式が M0 と同一（後方互換, S3）
-- [ ] Langfuse に拡張スパン + rerank コストが出る（S4）
-- [ ] `make eval` が3モードの比較表（Recall@5/@10・nDCG@10・MRR）を出力・保存する（S5）
-- [ ] PR に before/after の比較表を記載した（AGENTS §9）
-- [ ] `make lint` / `make test` が通る（RRF 融合ロジックの単体・全文検索SQL統合・rerank モックをカバー）
-- [ ] 依存方向ルール（AGENTS §3）を守っている（全文検索・rerank は `retrieval/` に閉じる）
+> M5監査（2026-07-13）: 以下は現行コード（`backend/src/private_rag_apps/`）に対して項目ごとに検証した。
+
+- [x] `0002` マイグレーションが適用され pg_bigm GIN 索引が存在する（確認: `backend/alembic/versions/0002_chunks_content_bigm.py` が `chunks_content_bigm` GIN索引を `CREATE INDEX IF NOT EXISTS` で作成）（**要注記**: `0001_init.py`（73-76行）が同名索引を先に作成済みのため、`0002` は実質 no-op になっている。マイグレーション適用後に索引が存在するという結論自体は真だが、「M1がこの索引を追加する」という設計意図どおりには実装されていない。詳細は `m0_tasklist.md` M0-2 の注記を参照）
+- [x] `hybrid_rerank` で融合 + リランク後の top_k が生成に渡る（S1）（確認: `retrieval/searcher.py:39-45` の `hybrid_rerank` 分岐が `_hybrid_search`→`_rerank` を実行し、`api/main.py:159,170` で `retrieve_context()` の結果がそのまま `generate_answer_stream()` に渡る）
+- [x] 片側検索が0件でも例外なく回答する（S2）（確認: `retrieval/searcher.py:111-119` の融合SQLは `UNION ALL` で片側空を許容、`searcher.py:138-139` で結果0件なら空リストを返し例外にしない、`_rerank`（166-167行）も空入力で空リストを返す。単体テストは `tests/test_retrieval.py::TestRerankFallback::test_empty_chunks_returns_empty` で確認。ただし実DBで両CTEを通す統合テストは無い — 下記 lint/test 項目の注記参照）
+- [ ] `POST /api/chat` の応答形式が M0 と同一（後方互換, S3） — **未チェック**: `m0_walking_skelton.md` §7 で確認した通り、現行の `/api/chat`（`api/main.py:123`）はM2以降SSEストリーミングに置き換わっており、M0時点のJSON `{content, citations}` 契約とは形式が異なる。M1完了当時（DBマイグレーション・検索・リランク実装時点、SSE化より前のコミット）はこの契約を維持していたと考えられるが、現在のHEADに対しては字句通り未達
+- [x] Langfuse に拡張スパン + rerank コストが出る（S4）（確認: `retrieval/searcher.py:84` `hybrid_search`、`124-136` の `rrf_fuse` 子スパン（`fused_candidates`件数を記録）、`159` `rerank`、`180-189` で rerank のトークン使用量を `update_current_generation` に記録。§4.5「実装上の補足」どおり `vector_search`/`fts_search` は独立スパインではなく `hybrid_search` に統合）
+- [x] `make eval` が fused/reranked 2レッグの比較表（Recall@5/@10・nDCG@10・MRR）を出力・保存する（S5。M3統合ハーネス `backend/src/private_rag_apps/evals/__main__.py` で実現。vector単体レッグは未実装 — 上記「実装上の補足」参照）
+- [ ] PR に before/after の比較表を記載した（AGENTS §9） — **未チェック**: リポジトリ内に検証手段がない（`docs/eval_report.md` は現存せず、`git log` にも該当PRの痕跡なし）。`backend/evals/baselines/current.json` にベースライン数値は存在し `make eval` が最低1回実行された形跡はあるが、PR本文への記載有無はコードからは確認不能。GitHub PR履歴を別途確認する必要がある
+- [ ] `make lint` / `make test` が通る（RRF 融合ロジックの単体・全文検索SQL統合・rerank モックをカバー） — **部分未達**: `uv run ruff check .` はPASS。RRF融合ロジックの単体テスト（`tests/test_retrieval.py::TestRrfScoreLogic`）とrerankモックテスト（`::TestRerankFallback`）は存在し確認できたが、**「全文検索SQL統合」テストは見つからなかった**（`bigm_similarity`/`=%`/`gin_bigm_ops`/`hybrid_search`を実DBに対して呼ぶテストが `backend/tests/` に存在しない。`test_api.py` は `retrieve_context` 自体をモックしており、pg_bigmクエリを一度も実行していない）。RRF・rerank以外の「全文検索SQL統合」部分は未充足として記録
+- [x] 依存方向ルール（AGENTS §3）を守っている（全文検索・rerank は `retrieval/` に閉じる）（確認: grepで `_rerank`・`bigm_similarity`・rerank API呼び出しは `retrieval/searcher.py` のみに存在。`generation/generator.py` は戦略切替を意識せず `context_chunks` を受け取るのみ）
 
 ---
 
