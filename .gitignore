@@ -16,5 +16,6 @@ build/
 # uv
 backend/uv.lock
 
-# eval実行の生JSON（タイムスタンプ付き・都度生成）。baselineとdocs/eval_report.mdのみコミット対象
+# eval実行の生JSON・人間可読サマリ（都度生成）。baselineのみコミット対象
+# docs/eval_report.md はM5が手書きで管理する別ファイル（このディレクトリのlatest_summary.mdを引用する）
 backend/evals/reports/

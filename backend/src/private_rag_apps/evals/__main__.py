@@ -222,17 +222,19 @@ def run_eval() -> None:
         else:
             md_report += "**PASSED**: All metrics within tolerance.\n"
             
-        Path("../docs/eval_report.md").write_text(md_report)
-        print("Wrote docs/eval_report.md")
-
         out_dir = Path("evals/reports")
         out_dir.mkdir(parents=True, exist_ok=True)
+
+        summary_path = out_dir / "latest_summary.md"
+        summary_path.write_text(md_report)
+        print(f"Wrote {summary_path}")
+
         timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
         out_path = out_dir / f"m3_{timestamp}.json"
-        
+
         with open(out_path, "w", encoding="utf-8") as f:
             json.dump(report, f, indent=2)
-            
+
         print(f"Saved JSON report to {out_path}")
         
         # [HOOK] Langfuse Datasets/Experiments連携

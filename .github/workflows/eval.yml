@@ -14,37 +14,33 @@ on:
 jobs:
   evaluate:
     runs-on: ubuntu-latest
-    
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: rag_user
-          POSTGRES_PASSWORD: rag_pass
-          POSTGRES_DB: rag_db
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-          
+
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Start Postgres (pg_bigm入りカスタムイメージ。docker-compose.yml/Dockerfile.local を再利用)
+        run: docker compose up -d db
+
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            docker compose exec -T db pg_isready -U rag_user -d rag_db && exit 0
+            sleep 2
+          done
+          echo "Postgres did not become ready in time" && exit 1
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
-        
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-          
+
       - name: Install dependencies
         working-directory: ./backend
         run: uv sync
-        
+
       - name: Migrate Database
         working-directory: ./backend
         env:
@@ -75,8 +71,8 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            if (fs.existsSync('docs/eval_report.md')) {
-              const report = fs.readFileSync('docs/eval_report.md', 'utf8');
+            if (fs.existsSync('backend/evals/reports/latest_summary.md')) {
+              const report = fs.readFileSync('backend/evals/reports/latest_summary.md', 'utf8');
               github.rest.issues.createComment({
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
@@ -84,3 +80,7 @@ jobs:
                 body: report
               });
             }
+
+      - name: Stop Postgres
+        if: always()
+        run: docker compose down -v
