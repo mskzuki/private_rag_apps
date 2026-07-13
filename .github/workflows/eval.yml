@@ -56,16 +56,15 @@ jobs:
         env:
           DATABASE_URL: postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_db
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: uv run python -m private_rag_apps.cli.main ingest
-        
+
       - name: Run M3 Eval
         id: eval
         working-directory: ./backend
         env:
           DATABASE_URL: postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_db
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           uv run python -m private_rag_apps.evals
           

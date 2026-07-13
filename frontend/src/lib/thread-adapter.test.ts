@@ -5,7 +5,10 @@ import {
 } from "./thread-adapter";
 
 function mockFetchJson(
-  handler: (url: string, init?: RequestInit) => { status: number; body: unknown },
+  handler: (
+    url: string,
+    init?: RequestInit,
+  ) => { status: number; body: unknown },
 ) {
   vi.stubGlobal(
     "fetch",
@@ -84,16 +87,15 @@ describe("createThreadListAdapter", () => {
     "unarchive",
     "delete",
     "generateTitle",
-] as const;
+  ] as const;
 
-  it.each(outOfScopeMethods)(
-    "%s() rejects because it is out of scope until M4+ (m2_streaming_and_history.md §4.4)",
-    async (method) => {
-      const adapter = createThreadListAdapter();
-      const fn = adapter[method] as (...args: unknown[]) => Promise<unknown>;
-      await expect(fn("id", "arg2")).rejects.toThrow();
-    },
-  );
+  it.each(
+    outOfScopeMethods,
+  )("%s() rejects because it is out of scope until M4+ (m2_streaming_and_history.md §4.4)", async (method) => {
+    const adapter = createThreadListAdapter();
+    const fn = adapter[method] as (...args: unknown[]) => Promise<unknown>;
+    await expect(fn("id", "arg2")).rejects.toThrow();
+  });
 });
 
 describe("createThreadHistoryAdapter", () => {

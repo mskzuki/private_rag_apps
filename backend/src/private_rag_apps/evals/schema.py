@@ -49,4 +49,4 @@ def validate_paths(dataset: List[DatasetItem], seed_dir: str | Path) -> None:
     
     if missing:
         errors = [f"Item {item_id}: path '{path}' not found" for item_id, path in missing]
-        raise FileNotFoundError(f"Missing files in seed directory:\n" + "\n".join(errors))
+        raise FileNotFoundError("Missing files in seed directory:\n" + "\n".join(errors))

@@ -35,7 +35,9 @@ const rejectNotSupported = (): Promise<never> =>
     ),
   );
 
-async function fetchConversationDetail(id: string): Promise<ConversationDetail> {
+async function fetchConversationDetail(
+  id: string,
+): Promise<ConversationDetail> {
   const res = await fetch(`/api/conversations/${id}`);
   if (!res.ok) throw new Error(`Failed to fetch conversation ${id}`);
   return res.json();

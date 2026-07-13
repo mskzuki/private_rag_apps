@@ -3,7 +3,7 @@ import hashlib
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, cast
 
 from private_rag_apps.core.config import settings
 from private_rag_apps.core.db import SessionLocal
@@ -26,8 +26,6 @@ def get_corpus_hash() -> str:
     return hasher.hexdigest()
 
 def get_answer(query: str, context: List[Dict[str, Any]]) -> str:
-    # 単一の固定文字列が欲しいので、設定を一時的に上書きする
-    old_llm = settings.llm_model
     # generator.py がtemp/max_tokensの上書きに対応していればここで上書きできるが、現状は1024固定・デフォルトtempがハードコードされている。
     # generator.py がeval用の設定を使うべきか、M3が言う「fixed max_tokens」の通り現状のまま使うべきかは未確定。
     # generator.py を変更しない限りtempを簡単に上書きできないので、ひとまずこのまま実行する（M3スペックではEVAL_GEN_TEMPERATURE=0とされている点に注意）。
@@ -80,7 +78,10 @@ def run_eval() -> None:
 
             # 1. 検索
             # M3のevalではhybrid_rerankを強制する
-            ret_result = retrieve_context(db, query=query_to_search, strategy="hybrid_rerank", diagnostic_mode=True)
+            ret_result = cast(
+                Dict[str, List[Dict[str, Any]]],
+                retrieve_context(db, query=query_to_search, strategy="hybrid_rerank", diagnostic_mode=True),
+            )
             fused_chunks = ret_result["fused_ranking"]
             reranked_chunks = ret_result["reranked_ranking"]
             
@@ -135,7 +136,7 @@ def run_eval() -> None:
         agg["generation"]["answer_relevance"] /= total
         
         # 実行時の来歴情報
-        provenance = {
+        provenance: Dict[str, Any] = {
             "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             "dataset_version": "m3_golden",
             "corpus_hash": get_corpus_hash(),
@@ -149,6 +150,9 @@ def run_eval() -> None:
             },
             "models": {
                 "llm": settings.llm_model,
+                "embed": settings.embed_model,
+                "embed_dims": 1024,       # models/rag.py の Vector(1024) と一致。settings に次元フィールドが無いためハードコード
+                "rerank": "rerank-2.5",   # retrieval/searcher.py のハードコード値と一致。settings に無いため同様
                 "judge": settings.judge_model
             }
         }
@@ -193,7 +197,7 @@ def run_eval() -> None:
 - **Date**: {provenance["timestamp"]}
 - **Dataset Version**: {provenance["dataset_version"]}
 - **Corpus Hash**: {provenance["corpus_hash"]}
-- **Models**: LLM={provenance["models"]["llm"]}, Judge={provenance["models"]["judge"]}
+- **Models**: LLM={provenance["models"]["llm"]}, Embed={provenance["models"]["embed"]} ({provenance["models"]["embed_dims"]}d), Rerank={provenance["models"]["rerank"]}, Judge={provenance["models"]["judge"]}
 - **Retrieval**: EVAL_TOP_K={provenance["retrieval_params"]["eval_top_k"]}, EVAL_EF_SEARCH={provenance["retrieval_params"]["eval_ef_search"]}
 
 ## Aggregate Metrics
@@ -218,7 +222,7 @@ def run_eval() -> None:
         else:
             md_report += "**PASSED**: All metrics within tolerance.\n"
             
-        Path("../../docs/eval_report.md").write_text(md_report)
+        Path("../docs/eval_report.md").write_text(md_report)
         print("Wrote docs/eval_report.md")
 
         out_dir = Path("evals/reports")

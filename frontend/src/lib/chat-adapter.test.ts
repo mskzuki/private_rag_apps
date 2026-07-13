@@ -1,4 +1,7 @@
-import type { ChatModelRunOptions, ChatModelRunResult } from "@assistant-ui/react";
+import type {
+  ChatModelRunOptions,
+  ChatModelRunResult,
+} from "@assistant-ui/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createChatAdapter } from "./chat-adapter";
 

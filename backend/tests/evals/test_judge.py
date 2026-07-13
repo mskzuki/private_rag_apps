@@ -1,4 +1,3 @@
-import pytest
 from unittest.mock import patch, MagicMock
 from private_rag_apps.evals.judge import _call_judge, evaluate_faithfulness, evaluate_answer_relevance
 

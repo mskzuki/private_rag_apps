@@ -1,4 +1,3 @@
-import pytest
 import math
 from private_rag_apps.evals.metrics import evaluate_retrieval
 from private_rag_apps.evals.schema import RelevantDoc

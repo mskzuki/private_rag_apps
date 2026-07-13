@@ -2,7 +2,6 @@ import json
 import tempfile
 from pathlib import Path
 import pytest
-from pydantic import ValidationError
 
 from private_rag_apps.evals.schema import load_dataset, validate_paths
 

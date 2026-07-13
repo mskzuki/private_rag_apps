@@ -24,13 +24,14 @@ def condense(query: str, history_messages: List[Dict[str, str]]) -> str:
             input=prompt
         )
 
-        get_client().update_current_generation(
-            usage_details={
-                "input": response.usage.input_tokens,
-                "output": response.usage.output_tokens
-            },
-            model=settings.condense_model
-        )
+        if response.usage is not None:
+            get_client().update_current_generation(
+                usage_details={
+                    "input": response.usage.input_tokens,
+                    "output": response.usage.output_tokens
+                },
+                model=settings.condense_model
+            )
         return response.output_text.strip()
     except Exception as e:
         print(f"Condense error: {e}")
@@ -76,7 +77,7 @@ def generate_answer_stream(query: str, context_chunks: List[Dict[str, Any]]):
             elif event.type == "response.completed":
                 final_response = event.response
 
-        if final_response is not None:
+        if final_response is not None and final_response.usage is not None:
             get_client().update_current_generation(
                 usage_details={
                     "input": final_response.usage.input_tokens,

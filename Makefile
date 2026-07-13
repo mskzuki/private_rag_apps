@@ -1,7 +1,10 @@
-.PHONY: setup migrate demo ingest test lint fmt eval api openapi
+.PHONY: setup migrate demo ingest test lint fmt eval api web openapi
 
 api:
 	cd backend && uv run uvicorn private_rag_apps.api.main:app --reload
+
+web:
+	cd frontend && pnpm dev
 
 # 初期セットアップ: uv sync + pnpm install + .env生成 + DB起動（AGENTS.md §4/§5）
 setup:

@@ -18,13 +18,14 @@ def _call_judge(prompt: str) -> Dict[str, Any]:
 
         # Record usage
         try:
-            get_client().update_current_generation(
-                usage_details={
-                    "input": response.usage.input_tokens,
-                    "output": response.usage.output_tokens
-                },
-                model=settings.judge_model
-            )
+            if response.usage is not None:
+                get_client().update_current_generation(
+                    usage_details={
+                        "input": response.usage.input_tokens,
+                        "output": response.usage.output_tokens
+                    },
+                    model=settings.judge_model
+                )
         except Exception:
             pass
 
