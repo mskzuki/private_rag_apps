@@ -58,7 +58,7 @@ def retrieve_context(
 @observe(name="embed_query")
 def _embed_query(query: str) -> List[float]:
     """検索クエリを埋め込みモデル(Voyage)を用いてベクトル化する"""
-    voyage_client = voyageai.Client(api_key=settings.voyage_api_key)
+    voyage_client = voyageai.Client(api_key=settings.voyage_api_key, max_retries=settings.voyage_max_retries)
     from typing import cast
     return cast(List[float], voyage_client.embed(
         [query], model=settings.embed_model, input_type="query",
@@ -94,10 +94,10 @@ def _hybrid_search(
     sql = text("""
     WITH vector_search AS (
         SELECT c.id,
-               ROW_NUMBER() OVER (ORDER BY c.embedding <=> :q_embedding::vector) AS rank
+               ROW_NUMBER() OVER (ORDER BY c.embedding <=> CAST(:q_embedding AS vector)) AS rank
         FROM chunks c
         JOIN sources s ON s.id = c.source_id AND s.deleted_at IS NULL
-        ORDER BY c.embedding <=> :q_embedding::vector
+        ORDER BY c.embedding <=> CAST(:q_embedding AS vector)
         LIMIT :cand_k
     ),
     fts_search AS (
@@ -168,7 +168,7 @@ def _rerank(
 
     documents = [c["content"] for c in chunks]
     try:
-        voyage_client = voyageai.Client(api_key=settings.voyage_api_key)
+        voyage_client = voyageai.Client(api_key=settings.voyage_api_key, max_retries=settings.voyage_max_retries)
         rerank_result = voyage_client.rerank(
             query=query,
             documents=documents,

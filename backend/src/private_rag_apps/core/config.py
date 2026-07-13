@@ -1,3 +1,4 @@
+import os
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -7,6 +8,7 @@ class Settings(BaseSettings):
     # 基本接続情報
     openai_api_key: str = ""  # OpenAI API キー（generation・evals で使用）
     voyage_api_key: str = ""  # Voyage AI API キー（埋め込み・リランクで使用）
+    voyage_max_retries: int = 5  # Voyage呼び出し失敗時の再試行回数（SDK組み込みのexponential backoff。レート制限対策）
     langfuse_public_key: str = ""  # Langfuse 公開鍵（任意。未設定なら計装は no-op）
     langfuse_secret_key: str = ""  # Langfuse 秘密鍵（任意。未設定なら計装は no-op）
     langfuse_host: str = "https://cloud.langfuse.com"  # Langfuse 送信先ホスト
@@ -54,3 +56,12 @@ class Settings(BaseSettings):
     )
 
 settings = Settings()
+
+# langfuse の @observe()/get_client() はプロセス環境変数を直接参照するため、
+# pydantic-settings が読み込んだ .env の値をここで反映する（未設定なら何もせず no-op のまま。NFR-4）
+if settings.langfuse_public_key:
+    os.environ.setdefault("LANGFUSE_PUBLIC_KEY", settings.langfuse_public_key)
+if settings.langfuse_secret_key:
+    os.environ.setdefault("LANGFUSE_SECRET_KEY", settings.langfuse_secret_key)
+if settings.langfuse_host:
+    os.environ.setdefault("LANGFUSE_HOST", settings.langfuse_host)

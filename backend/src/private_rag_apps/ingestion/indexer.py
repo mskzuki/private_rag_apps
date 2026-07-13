@@ -172,7 +172,7 @@ def _embed_documents(texts: List[str]) -> List[List[float]]:
     """チャンク化されたテキストのリストをVoyage AIを用いてバッチ単位でベクトル化（埋め込み）する"""
     if not texts:
         return []
-    voyage_client = voyageai.Client(api_key=settings.voyage_api_key)
+    voyage_client = voyageai.Client(api_key=settings.voyage_api_key, max_retries=settings.voyage_max_retries)
     batch_size = settings.ingest_embed_batch_size
     embeddings: List[List[float]] = []
     for start in range(0, len(texts), batch_size):
