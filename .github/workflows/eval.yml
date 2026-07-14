@@ -24,7 +24,7 @@ jobs:
       - name: Wait for Postgres
         run: |
           for i in $(seq 1 30); do
-            docker compose exec -T db pg_isready -U rag_user -d rag_db && exit 0
+            docker compose exec -T db pg_isready -U rag_user -d rag_dev && exit 0
             sleep 2
           done
           echo "Postgres did not become ready in time" && exit 1
@@ -44,13 +44,13 @@ jobs:
       - name: Migrate Database
         working-directory: ./backend
         env:
-          DATABASE_URL: postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_db
+          DATABASE_URL: postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_dev
         run: uv run alembic upgrade head
         
       - name: Ingest Seed Corpus
         working-directory: ./backend
         env:
-          DATABASE_URL: postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_db
+          DATABASE_URL: postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_dev
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
         run: uv run python -m private_rag_apps.cli.main ingest
 
@@ -58,7 +58,7 @@ jobs:
         id: eval
         working-directory: ./backend
         env:
-          DATABASE_URL: postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_db
+          DATABASE_URL: postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_dev
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |

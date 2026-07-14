@@ -10,6 +10,8 @@ from pgvector.sqlalchemy import Vector
 from .base import Base
 
 class Source(Base):
+    """取り込み対象の原文書（コーパス内の1ファイル）を表す。"""
+
     __tablename__ = "sources"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
@@ -22,6 +24,8 @@ class Source(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 class Chunk(Base):
+    """Source を分割したチャンク。埋め込みベクトルと全文検索用インデックスを持つ検索単位。"""
+
     __tablename__ = "chunks"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
@@ -38,6 +42,8 @@ class Chunk(Base):
     )
 
 class IngestRun(Base):
+    """取り込みジョブ（CLI / BackgroundTasks）1回分の実行記録。"""
+
     __tablename__ = "ingest_runs"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
@@ -49,6 +55,8 @@ class IngestRun(Base):
     finished_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP(timezone=True))
 
 class Conversation(Base):
+    """チャットの1スレッド（複数の Message をまとめる単位）。"""
+
     __tablename__ = "conversations"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
@@ -57,6 +65,8 @@ class Conversation(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 class Message(Base):
+    """Conversation 内の1発言。role が assistant の場合は citations に出典を保持する。"""
+
     __tablename__ = "messages"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))

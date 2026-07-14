@@ -7,12 +7,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # 基本接続情報
     openai_api_key: str = ""  # OpenAI API キー（generation・evals で使用）
+    llm_provider: Literal["openai", "ollama"] = "openai"  # 生成に使うLLMプロバイダ（condense/generate_answer_streamのみ対象。judgeは対象外）
+    ollama_base_url: str = "http://localhost:11434/v1"  # Ollama の OpenAI互換エンドポイント（/v1/responses対応。v0.13.3以降が前提）
+    ollama_api_key: str = "ollama"  # Ollamaはキー不要だがopenai SDKがダミー値を要求するため固定値
     voyage_api_key: str = ""  # Voyage AI API キー（埋め込み・リランクで使用）
     voyage_max_retries: int = 5  # Voyage呼び出し失敗時の再試行回数（SDK組み込みのexponential backoff。レート制限対策）
     langfuse_public_key: str = ""  # Langfuse 公開鍵（任意。未設定なら計装は no-op）
     langfuse_secret_key: str = ""  # Langfuse 秘密鍵（任意。未設定なら計装は no-op）
     langfuse_host: str = "https://cloud.langfuse.com"  # Langfuse 送信先ホスト
-    database_url: str = "postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_db"  # PostgreSQL(pgvector+pg_bigm)接続文字列
+    database_url: str = "postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_dev"  # PostgreSQL(pgvector+pg_bigm)接続文字列。開発/デモ用DB（テストは rag_test を使う。docs/architecture.md §9）
     corpus_dir: str = "seed/corpus"  # 取り込み対象コーパス（Markdown/テキスト）のディレクトリ
     llm_model: str = ""  # 回答生成に使う OpenAI モデル
     embed_model: str = ""  # 埋め込みに使う Voyage モデル（ingestion/retrieval で共有）

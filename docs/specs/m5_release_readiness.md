@@ -1,6 +1,6 @@
-# Private RAG Apps — M5 フィーチャースペック: ショーケース仕上げ（README・Eval レポート・可観測性提示・文書整備） (m5_showcase_finishing.md)
+# Private RAG Apps — M5 フィーチャースペック: ショーケース仕上げ（README・Eval レポート・可観測性提示・文書整備） (m5_release_readiness.md)
 
-> 配置先: `docs/specs/m5_showcase_finishing.md`
+> 配置先: `docs/specs/m5_release_readiness.md`
 > 対象マイルストーン: **M5**（requirements.md §10）
 > 充足要件: **§12 Definition of Success（完全）**、関連 **FR-7 / NFR-1 / NFR-3 / NFR-4 / NFR-8 / §1 プロジェクトの位置づけ**
 > 上位ドキュメント: 要件=`requirements.md`(v0.4)、構成=`architecture.md`(v0.4)、物理設計=`db_design.md`(v0.2)、規約=`AGENTS.md`(v0.7)、各機能スペック=`docs/specs/m0`〜`m4`。

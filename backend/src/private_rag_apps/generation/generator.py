@@ -1,7 +1,7 @@
-import openai
 from typing import List, Dict, Any
 from langfuse import observe, get_client
 from private_rag_apps.core.config import settings
+from private_rag_apps.generation.llm_client import get_llm_client
 from private_rag_apps.prompts.rag import RAG_SYSTEM_PROMPT, build_context_text
 from private_rag_apps.prompts.condense import CONDENSE_SYSTEM_PROMPT, build_condense_prompt
 
@@ -13,15 +13,21 @@ def condense(query: str, history_messages: List[Dict[str, str]]) -> str:
 
     history_text = "\n".join([f"{msg['role']}: {msg['content']}" for msg in history_messages[-settings.condense_history_turns*2:]])
 
-    client = openai.OpenAI(api_key=settings.openai_api_key)
+    client = get_llm_client()
     prompt = build_condense_prompt(history_text, query)
 
     try:
+        # Ollama(Qwen3.5等の推論モデル)は既定でthinkingを行い、条件次第でmax_output_tokensを
+        # 思考だけで使い切り回答が空になることがあるため、reasoningを無効化する(実機検証で確認)
+        extra_kwargs: Dict[str, Any] = (
+            {"reasoning": {"effort": "none"}} if settings.llm_provider == "ollama" else {}
+        )
         response = client.responses.create(
             model=settings.condense_model,
             max_output_tokens=256,
             instructions=CONDENSE_SYSTEM_PROMPT,
-            input=prompt
+            input=prompt,
+            **extra_kwargs
         )
 
         if response.usage is not None:
@@ -32,7 +38,7 @@ def condense(query: str, history_messages: List[Dict[str, str]]) -> str:
                 },
                 model=settings.condense_model
             )
-        return response.output_text.strip()
+        return response.output_text.strip() or query
     except Exception as e:
         print(f"Condense error: {e}")
         return query # Fallback
@@ -57,17 +63,21 @@ def generate_answer_stream(query: str, context_chunks: List[Dict[str, Any]]):
     
     yield {"event": "citations", "data": citations}
 
-    client = openai.OpenAI(api_key=settings.openai_api_key)
+    client = get_llm_client()
     context_text = build_context_text(context_chunks)
     user_prompt = f"コンテキスト情報:\n{context_text}\n\n質問: {query}"
 
     try:
+        extra_kwargs: Dict[str, Any] = (
+            {"reasoning": {"effort": "none"}} if settings.llm_provider == "ollama" else {}
+        )
         stream = client.responses.create(
             model=settings.llm_model,
             max_output_tokens=1024,
             instructions=RAG_SYSTEM_PROMPT,
             input=user_prompt,
-            stream=True
+            stream=True,
+            **extra_kwargs
         )
 
         final_response = None

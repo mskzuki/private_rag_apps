@@ -275,6 +275,9 @@ sequenceDiagram
 - `core/config.py`（pydantic-settings）で一元管理。値のハードコード禁止
 - 必須キー: `OPENAI_API_KEY` / `VOYAGE_API_KEY` / `DATABASE_URL` / `CORPUS_DIR`（`LANGFUSE_*` は**任意**・未設定時は計装 no-op。§8）
 - 増分再取り込み関連（すべて任意・既定値あり）: `INGEST_DELETE_GUARD_RATIO` / `INGEST_ADVISORY_LOCK_KEY` / `INGEST_STALE_RUNNING_SEC` / `INGEST_STATS_FLUSH_EVERY` / `INGEST_EMBED_BATCH_SIZE`
+- **DB 環境の分離（開発 vs テスト）**: 開発・デモ用に `rag_dev`、自動テスト用に `rag_test` を、同一 PostgreSQL インスタンス内の別データベースとして作成し運用する。`docker-compose.yml` の `db` サービスは `POSTGRES_DB=rag_dev` で起動し、初回起動（空ボリューム）時のみ `backend/docker/db/initdb/01_create_rag_test.sql`（`docker-entrypoint-initdb.d` にマウント）が `rag_test` を追加作成する。
+  - **背景**: `backend/tests/` にはテスト用 DB を強制する仕組み（`conftest.py` 等）が無く、`DATABASE_URL` の分離を怠ったまま `make test` を実行すると、`DELETE /api/index`（§7、`api/main.py: reset_index`。`sources`/`chunks` を無条件全削除）を呼ぶテストや、取り込みテストの全置換ロジックが実 DB のデータを消してしまう。この事故が M5・M6 で計2回発生した。
+  - **実装**: `make test`（Makefile）が `DATABASE_URL` を `rag_test` に固定してから `pytest` を起動するため、`.env` の設定に関わらずテストが `rag_dev` に触れることはない（`conftest.py` 等の新規抽象化はせず、既存の `demo:` ターゲット同様に Makefile 側で環境変数を上書きする形で実装。M6局所化の方針に合わせ過剰な抽象化を避けた）。`core/config.py` の既定値・`.env.example`・`docker-compose.yml` の `api` サービスはいずれも `rag_dev` を指す。
 
 ---
 
@@ -308,6 +311,8 @@ sequenceDiagram
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.7 | 2026-07-14 | §9 の DB 環境分離を実装反映: `rag_dev`/`rag_test` を実際に作成し、`docker-compose.yml`（`POSTGRES_DB`・initdb スクリプト・`api` の `DATABASE_URL`）、`core/config.py` 既定値、`.env.example`、`make test`（`DATABASE_URL` を `rag_test` に固定）を更新 |
+| v0.6 | 2026-07-14 | §9 に DB 環境分離の方針（開発用 `rag_dev` / テスト用 `rag_test`）を追記。背景は `make test` がデモ用DBを誤って初期化した事故（M5・M6で計2回）。方針決定のみで実装は未着手 |
 | v0.5 | 2026-07-11 | M4 追従: §1 に pg_bigm 入り Postgres イメージの注記と、`POST /api/ingest` が running 行を同期作成してから id を返す設計を追記。§6 に増分再取り込み（content_hash 判定・埋め込み事前+短トランザクション全置換・削除安全弁・soft-delete 復活経路）を追記。§9 に `INGEST_*` 設定キーを追記。§10 に削除安全弁・多重起動・`DELETE /api/index`（会話は保持）のエラー処理行を追加 |
 | v0.4 | 2026-07-08 | M2/M3 スペック追従 + 全体レビュー反映: §3.2/§7 の SSE を M2 確定版へ（**citations を生成前送出**・`done` に `conversation_id`・エラーターン非保存）。§7 API 表に `POST /api/conversations` 追加、assistant-ui に**累積 yield の注意**と**範囲外 `[n]` 無視**を追記。§4 に `retrieval` の**評価/診断モード**（融合前/後の両ランキング）を追加。§8 に Eval/judge のトレースを追記。`LANGFUSE_*` を任意化（§8/§9）。`web/` → `frontend/`（AGENTS v0.5 追従）。ヘッダの requirements 参照を v0.4 へ |
 | v0.3 | 2026-07-07 | チャット UI に **assistant-ui**（カスタムランタイム）を採用。§7 に SSE→ランタイムのマッピングと出典カードの generative UI 描画を追記。§1 構成図・§11 設計判断を更新。ChatKit 不採用の理由を明記 |

@@ -1,7 +1,7 @@
 .PHONY: setup migrate demo ingest test lint fmt eval api web openapi
 
 api:
-	cd backend && uv run uvicorn private_rag_apps.api.main:app --reload
+	docker compose up --build api
 
 web:
 	cd frontend && pnpm dev
@@ -26,8 +26,9 @@ ingest:
 demo: migrate
 	cd backend && CORPUS_DIR=seed/corpus uv run python -m private_rag_apps.cli.main ingest --trigger demo
 
+# rag_dev(開発/デモ用DB)を巻き込まないよう、テストは常に別DB rag_test に対して実行する（docs/architecture.md §9）
 test:
-	cd backend && uv run pytest
+	cd backend && DATABASE_URL="postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_test" uv run pytest
 
 lint:
 	cd backend && uv run ruff check . && uv run mypy .

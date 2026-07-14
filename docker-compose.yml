@@ -8,9 +8,12 @@ services:
     environment:
       - POSTGRES_USER=rag_user
       - POSTGRES_PASSWORD=rag_pass
-      - POSTGRES_DB=rag_db
+      - POSTGRES_DB=rag_dev
     volumes:
       - db_data:/var/lib/postgresql/data
+      # 初回起動(空ボリューム)時のみ実行される初期化スクリプト。rag_dev(POSTGRES_DBで作成済み)に加え、
+      # テスト専用DB rag_test をここで作成する(docs/architecture.md §9)
+      - ./backend/docker/db/initdb:/docker-entrypoint-initdb.d:ro
 
   api:
     build:
@@ -21,9 +24,10 @@ services:
     env_file:
       - backend/.env
     environment:
-      - DATABASE_URL=postgresql+psycopg://rag_user:rag_pass@db:5432/rag_db
+      - DATABASE_URL=postgresql+psycopg://rag_user:rag_pass@db:5432/rag_dev
     volumes:
       - ./seed:/app/seed
+      - ./backend/src:/app/src
     depends_on:
       - db
 

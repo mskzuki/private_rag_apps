@@ -50,6 +50,13 @@
 - **根拠**: SaaS同期がv1スコープ外である以上、キューを持つ運用コストに見合わない。
 - **詳細**: [architecture.md §11](architecture.md#11-主要な設計判断要点)
 
+### 開発DB / テストDBの分離（rag_dev / rag_test）
+
+- **決定**: 開発・デモ用DBを `rag_dev`、自動テスト用DBを `rag_test` として、同一PostgreSQLインスタンス内の別データベースで運用する。
+- **背景/代替案**: テスト用DBを強制する仕組み（`conftest.py`等）が無いまま `make test` を実行し、`DELETE /api/index` や取り込みテストの全置換ロジックがデモ用DBのデータを消してしまう事故がM5・M6で計2回発生した。
+- **根拠**: 開発/デモ用データを自動テストの破壊的操作から物理的に隔離する。同一Postgresインスタンス内の別DBに留めることで、単一Postgres集約という既存方針（[pgvector単一DB](#pgvector-単一-dbvs-qdrant)）とも矛盾しない。
+- **詳細**: [architecture.md §9](architecture.md#9-設定とシークレット)。`rag_dev`/`rag_test`を実DBとして作成済み。`conftest.py`等の新規抽象化はせず、`make test`がDATABASE_URLを`rag_test`に固定する形で分離を実装（既存の`demo:`ターゲットと同じ環境変数上書きパターン）。
+
 ### SaaS コネクタ・OAuth をスコープ外
 
 - **決定**: Notion/Slack/Drive等のSaaSコネクタ、OAuth認証・トークン管理、ACL権限考慮検索、エージェンティックRAG、PDF/Officeパースはv1スコープ外。
@@ -124,10 +131,10 @@
 
 ### M5クローズ範囲の判断（スクショ・GIF・別マシン実測・CI実行確認を先送り）
 
-- **決定**: M5の受け入れ条件（`m5_showcase_finishing.md` §12）のうち、(1) Langfuseトレーススクショ3枚、(2) デモGIF、(3) 別マシンでの真クリーンルーム15分実測、(4) `eval.yml`のCI修正を実GitHub Actions上で確認、の4項目はプロジェクトオーナーの判断で意図的に先送りし、それ以外（`docs/eval_report.md`の実データ完成・`docs/decisions.md`・設計文書⇄実装の一致監査・可観測性の実装とドキュメント化・README・LICENSE/`.env.example`/リンクチェック等のリポジトリ整備）をもってM5完了、M0〜M5完了と扱う。
+- **決定**: M5の受け入れ条件（`m5_release_readiness.md` §12）のうち、(1) Langfuseトレーススクショ3枚、(2) デモGIF、(3) 別マシンでの真クリーンルーム15分実測、(4) `eval.yml`のCI修正を実GitHub Actions上で確認、の4項目はプロジェクトオーナーの判断で意図的に先送りし、それ以外（`docs/eval_report.md`の実データ完成・`docs/decisions.md`・設計文書⇄実装の一致監査・可観測性の実装とドキュメント化・README・LICENSE/`.env.example`/リンクチェック等のリポジトリ整備）をもってM5完了、M0〜M5完了と扱う。
 - **背景**: 上記4項目はいずれもブラウザ操作（スクショ撮影・GIF録画）・別マシン・GitHubリモート接続（本リポジトリには`git remote`/`gh`が未設定）など、エージェントの実行環境の外側にある人手/インフラ依存の作業であり、自動化では完了できない。
 - **根拠**: スペックの★（最高優先度）項目である`docs/decisions.md`（判断の索引＝§1「レビュアーが見るのは判断の痕跡」に直結）と`docs/eval_report.md`（Evalレポート）は共に実データ・実行結果に基づき完成しており、レビュアーが判断の痕跡を追える状態は達成済み。残り4項目は「見せ方」の仕上げ（スクショ・GIF）と「検証の網羅性」（別マシン・実CI）であり、技術的信頼性の核ではない。ツール制約下で無理に代替措置（画像の捏造等）を取るより、正直に「未実施」と明記し人手作業として引き継ぐ方が、本リポジトリが掲げる誠実性（Evalの数値を捏造しないのと同じ精神）に合致すると判断した。
-- **詳細**: [m5_showcase_finishing.md §12](specs/m5_showcase_finishing.md#12-受け入れ条件-definition-of-success-のクローズ) / [m5_tasklist.md Phase 9](specs/m5_tasklist.md) / [assets/README.md](assets/README.md)（未実施4項目の引き継ぎ手順）
+- **詳細**: [m5_release_readiness.md §12](specs/m5_release_readiness.md#12-受け入れ条件-definition-of-success-のクローズ) / [m5_tasklist.md Phase 9](specs/m5_tasklist.md) / [assets/README.md](assets/README.md)（未実施4項目の引き継ぎ手順）
 
 ---
 
@@ -135,5 +142,7 @@
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.4 | 2026-07-14 | 開発DB/テストDB分離（rag_dev/rag_test）を実装反映。DB作成・`make test`のDATABASE_URL固定まで完了 |
+| v0.3 | 2026-07-14 | 開発DB/テストDB分離（rag_dev/rag_test）の決定を追記。M5・M6で計2回発生した、テスト実行がデモ用DBを誤って初期化する事故が背景 |
 | v0.2 | 2026-07-13 | M5クローズにあたり、スクショ/GIF/別マシン実測/CI実行確認を意図的に先送りした判断を追記 |
 | v0.1 | 2026-07-13 | 初版。M5 Phase 2。既存specs/requirements/architecture/db_designの判断を集約 |

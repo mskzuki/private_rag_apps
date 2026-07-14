@@ -12,19 +12,28 @@
       "Bash(ln -s ../seed /Users/mskzuk/src/private_rag_apps/backend/seed)",
       "Bash(CORPUS_DIR=seed/corpus uv run python -c ' *)",
       "Bash(python3 -c ' *)",
-      "Bash(diff /Users/mskzuk/src/private_rag_apps/AGENTS.md /Users/mskzuk/src/private_rag_apps/seed/corpus/AGENTS.md)",
-      "Bash(diff /Users/mskzuk/src/private_rag_apps/docs/requirements.md /Users/mskzuk/src/private_rag_apps/seed/corpus/requirements.md)",
-      "Bash(diff /Users/mskzuk/src/private_rag_apps/docs/architecture.md /Users/mskzuk/src/private_rag_apps/seed/corpus/architecture.md)",
-      "Bash(diff /Users/mskzuk/src/private_rag_apps/docs/db_design.md /Users/mskzuk/src/private_rag_apps/seed/corpus/db_design.md)",
       "Bash(uvx --with mypy --with pydantic-settings --with sqlalchemy --with fastapi --with pgvector --with langfuse --with voyageai --with anthropic --with sse-starlette mypy src/private_rag_apps/api/main.py src/private_rag_apps/ingestion/ src/private_rag_apps/cli/main.py src/private_rag_apps/core/config.py)",
       "Bash(pnpm lint *)",
-      "Bash(echo \"exit: $?\")",
-      "Bash(pnpm fmt:check)",
       "Bash(xargs -I{} cat {})",
       "Bash(uv --version)",
       "Skill(claude-api)",
       "Skill(claude-api:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(/Users/mskzuk/.claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/subagent-driven-development/scripts/task-brief /Users/mskzuk/.claude/plans/m5-radiant-heron.md 4)",
+      "Edit(/.claude/skills/verify/**)",
+      "Bash(python3 -c \"import sse_starlette; print\\(sse_starlette.__file__\\)\")",
+      "Bash(xargs -I{} echo {})",
+      "Bash(make lint *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git add *)",
+      "Bash(open -a Docker)",
+      "Bash(DATABASE_URL=\"postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_db\" uv run pytest)",
+      "Bash(DATABASE_URL=\"postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_db_test\" uv run alembic upgrade head)",
+      "Bash(DATABASE_URL=\"postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_db_test\" uv run pytest)",
+      "Bash(gh --version)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   },
   "enabledPlugins": {
@@ -32,6 +41,5 @@
     "context7@claude-plugins-official": true,
     "code-review@claude-plugins-official": true
   },
-  "deny": {},
   "langage": "japanese"
 }
