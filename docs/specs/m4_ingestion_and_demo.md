@@ -108,6 +108,7 @@ flowchart LR
   - 検索が「チャンクが一瞬 0 件になった中間状態」を見ない（原子的に切り替わる）。
   - 埋め込み失敗時は DB を触らない（古い chunks が残り、検索は継続可能）。
 - 失敗した source はスキップして次へ進み、`ingest_runs.stats.failed_files` に記録（architecture §10）。
+- **★埋め込み呼び出しのペーシング（v0.4 追記）**: Voyage 呼び出し（`_embed_documents`）の間に最低 `INGEST_EMBED_MIN_INTERVAL_SEC` 秒の間隔を空ける。同一 source 内の複数バッチ・複数 source 間の両方に効く（前回呼び出し時刻を保持し、次回呼び出し前に不足分だけ待機）。ライブ実行でVoyageアカウントのRPM上限（無支払い枠で3RPM）により4ファイル中2ファイルが連続して失敗する事象を確認済みで、これを予防する（既存の `voyage_max_retries`＝SDK組み込み exponential backoff は残し、ペーシングで予防・SDK retry で保険という多層防御にする）。
 
 ### 4.3 削除反映と★安全弁
 
@@ -247,6 +248,7 @@ make demo:  docker compose up -d db  →  make migrate  →  make ingest CORPUS=
 | `INGEST_STALE_RUNNING_SEC` | stale な `running` 行とみなす経過秒（クラッシュ回収） | 実測後確定 |
 | `INGEST_STATS_FLUSH_EVERY` | 進捗の `stats` を UPDATE する間隔（ファイル数） | 実測後確定 |
 | `INGEST_EMBED_BATCH_SIZE` | 埋め込みバッチサイズ | 実測後確定 |
+| `INGEST_EMBED_MIN_INTERVAL_SEC`（v0.4 追記） | Voyage embed 呼び出し間の最低待機秒数（レート制限予防のペーシング。§4.2） | 21.0 |
 | `CORPUS_DIR` | 取り込み対象ディレクトリ（既存。demo は `seed/`。§6.1） | — |
 
 ---
@@ -337,6 +339,7 @@ AGENTS.md §12 に従い、**本スペック → `docs/specs/m4_tasklist.md` →
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.4 | 2026-07-14 | ライブ実行（`make ingest`/`make demo`）でVoyage無支払い枠のRPM上限（3RPM）により seed コーパス4ファイル中2ファイルが連続して埋め込み失敗する事象を確認。§4.2 に**embed呼び出し間ペーシング**（`INGEST_EMBED_MIN_INTERVAL_SEC`、既定21秒）を追記、§10 の設定一覧に追加。既存の `voyage_max_retries`（SDK組み込みretry）は維持し、ペーシングで予防・SDK retryで保険の多層防御とする |
 | v0.3 | 2026-07-12 | 実装レビューで判明した記述と実装の齟齬を解消: §4.3 の安全弁発動時の挙動を「削除フェーズのみ中断し `ingest_runs.status` は `success` を維持、理由は `ingest_runs.error` に記録する（実行全体は `error` にしない）」に確定・明記。§14 未決事項の該当項目を解決済みへ移動。挙動一覧表（§4.5 相当）の該当行を同趣旨に修正。実装（`ingestion/indexer.py`）・テスト・フロントのデータ管理UIのバッジ表示を追従 |
 | v0.2 | 2026-07-08 | セルフレビュー反映: (1) **soft-delete 済み path の復活経路**を追加（一意制約違反回避・無変更なら再埋め込みなし。§4.1）。(2) 多重実行抑止を **`running` 行で担保・advisory lock は開始の原子性のみ**に修正（BackgroundTasks 実行中の排他漏れを解消）+ **stale running 回収**（§4.4）。(3) 削除安全弁の**分母=生存 source** 明記と **`FORCE_DELETE` バイパス**（§4.3）。(4) `make demo` の **`CORPUS_DIR=seed/` 切替**と実運用の差し替え手順（§6.1）。(5) minor: sources 集計の N+1 回避、`stats` 逐次更新、取り込み中の初期化拒否、初期化の監査はアプリログのみに決定（§5）。受け入れ条件・テスト・§9/§10/§13/§14 に波及反映 |
 | v0.1 | 2026-07-08 | 初版。M4（増分再取り込み・データ管理 UI・デモ仕上げ）。増分の**埋め込み事前・短トランザクション全置換**、**削除安全弁**、**advisory lock による DDL 不要の多重実行抑止**、管理 API/UI、`make demo` 1 コマンド化、**pg_bigm 入り Postgres イメージ**、15 分クイックスタート実測、seed↔M3 データセットの整合、`DELETE /api/index` の会話非削除スコープを定義。上位ドキュメント反映点を §13 に明記 |

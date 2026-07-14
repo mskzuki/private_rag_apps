@@ -1,4 +1,5 @@
-from typing import List, TypedDict, cast
+import time
+from typing import List, Optional, TypedDict, cast
 from uuid import UUID
 
 import voyageai
@@ -12,6 +13,21 @@ from .chunker import ChunkResult, chunk_markdown
 from .concurrency import start_run
 from .diff import Action, classify, should_apply_deletions
 from .loader import Document, load_directory
+
+
+_last_embed_call_at: Optional[float] = None
+
+
+def _pace_embed_call() -> None:
+    """Voyage embed呼び出し間隔がINGEST_EMBED_MIN_INTERVAL_SEC未満にならないよう待機する
+    （レート制限予防。m4_ingestion_and_demo.md §4.2）"""
+    global _last_embed_call_at
+    now = time.monotonic()
+    if _last_embed_call_at is not None:
+        wait = settings.ingest_embed_min_interval_sec - (now - _last_embed_call_at)
+        if wait > 0:
+            time.sleep(wait)
+    _last_embed_call_at = time.monotonic()
 
 
 class Stats(TypedDict):
@@ -177,6 +193,7 @@ def _embed_documents(texts: List[str]) -> List[List[float]]:
     embeddings: List[List[float]] = []
     for start in range(0, len(texts), batch_size):
         batch = texts[start : start + batch_size]
+        _pace_embed_call()
         result = voyage_client.embed(batch, model=settings.embed_model, input_type="document")
         embeddings.extend(cast(List[List[float]], result.embeddings))
     return embeddings

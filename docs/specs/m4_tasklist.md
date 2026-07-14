@@ -46,6 +46,7 @@
 - [x] `ingest_runs.stats` 記録（`{added, updated, deleted, skipped, failed_files}` + `trigger`/`status`）と**逐次 UPDATE**（`INGEST_STATS_FLUSH_EVERY`。§4.5/§5.2）→ `indexer.py: _flush_stats`
 - [x] **CLI エントリポイント**（`cli/` の薄い層。`ingestion` サービスを呼ぶ。AGENTS.md §3）: `make ingest CORPUS=...`（`trigger='cli'`）/ `make demo`（`trigger='demo'`）/ **`FORCE_DELETE=1`**（安全弁バイパス。§4.3）を配線 → `cli/main.py`に`--trigger`/`--force-delete`追加、Makefile更新
 - [x] `core/config.py` に増分系設定を追加（`INGEST_DELETE_GUARD_RATIO` / `INGEST_ADVISORY_LOCK_KEY` / `INGEST_STALE_RUNNING_SEC` / `INGEST_STATS_FLUSH_EVERY` / `INGEST_EMBED_BATCH_SIZE`。§10。ハードコード禁止）
+- [ ] **（v0.6 追記）embed呼び出しのペーシング**（スペック §4.2/§10 v0.4）: `core/config.py` に `ingest_embed_min_interval_sec: float = 21.0` を追加。`indexer.py: _embed_documents` にVoyage呼び出し間の最低間隔待機を実装（同一source内バッチ間・source間の両方に効かせる）。ユニットテスト（`time.sleep`をmonkeypatchし実APIを叩かず間隔を検証）を `tests/test_ingestion_indexer.py` に追加
 - [x] ユニットテスト（純粋部分）: content_hash 判定（無変更/変更/新規/復活）、削除安全弁のしきい値境界、スキップ分類、stats 集計 → `tests/test_ingestion_diff.py`
 - [x] 統合テスト（テスト DB・CLI 同期経路）: 全置換の原子性（更新中の検索が 0 件中間状態を見ない／埋め込み失敗で古い chunks 残存）、削除反映後に `retrieval` 対象外化、**復活**（無変更＝再埋め込みなし/変更＝全置換）、**stale running 回収で再実行可**、`FORCE_DELETE` で安全弁バイパス → `tests/test_ingestion_indexer.py` + `tests/test_ingestion_concurrency.py`
       - ※ **running 排他が「実行中ずっと効く」検証は Phase 3**（BackgroundTasks 経路）で実施（今回は同期経路の拒否のみ検証済み）
@@ -122,6 +123,7 @@
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.6 | 2026-07-14 | スペック`m4_ingestion_and_demo.md` v0.4（embed呼び出しペーシング追記）に対応するタスクをPhase 2に追加。ライブ実行でVoyage無支払い枠のRPM上限により発生した取り込み部分失敗を受けた追記 |
 | v0.5 | 2026-07-11 | Phase 4〜8 実装完了を反映しM4を完了扱いとする（requirements.md反映のみ後日対応）。Phase 4: データ管理UI（`frontend/src/app/sources/page.tsx`、shadcn `table`/`alert-dialog`/`badge`追加）をPlaywrightでブラウザ実動作確認。Phase 5: `make demo`のCORPUS_DIR固定化、seed↔M3データセットの整合確認（差分なし）。副次的に`backend/seed`が未追跡の空ディレクトリでローカル実行時にコーパスパスが解決できないバグを発見し、`../seed`へのシンボリックリンクに修正。Phase 6: Langfuseトレース配線をコードレベルで確認（実クレデンシャル無しのためダッシュボード目視は未実施）。Phase 7: `make setup`がAGENTS.md記載の内容(uv sync+pnpm install+.env生成+DB起動)を実装していなかったバグを修正。pg_bigmビルド+DB起動+migrateの部分実測(合計1分未満)、`.env.example`最終化、READMEクイックスタート更新（実VOYAGE_API_KEY不在のためフル実測は未了、ユーザー側での最終実測を推奨）。Phase 8: db_design.md/architecture.md/AGENTS.mdへ反映。requirements.mdは別件の未コミット編集と競合するため見送り |
 | v0.4 | 2026-07-11 | Phase 3 実装完了を反映。`indexer.py`の`run_ingestion`を`start_run`+`execute_ingestion`に分割し、APIハンドラで`start_run`を同期実行してrun idを即返しつつ実処理をBackgroundTasks（独立Session）へ委譲する構成にした。`GET /api/sources`・`POST /api/ingest`・`GET /api/ingest/runs`・`DELETE /api/index`を実装、threadingを使った実タイミングの多重起動拒否テストを含め`tests/test_ingest_api.py`を追加。Phase 4以降は未着手 |
 | v0.3 | 2026-07-11 | Phase 0〜2 実装完了を反映。Phase 0 は既定値維持で確認済み（スペック差分なし）。Phase 1 はDockerfile.local/docker-compose.ymlが既に整備済みのため検証のみ実施（pg_bigm拡張・head migration・bigmインデックスを確認）。Phase 2 は `ingestion/diff.py`（classify/should_apply_deletions）・`ingestion/concurrency.py`（start_run/reap_stale_running）を新規追加し、`indexer.py`を増分ロジック対応に書き換え。`core/config.py`にINGEST_*設定を追加、CLIに`--trigger`/`--force-delete`、Makefileの`demo`ターゲットにtrigger='demo'を配線。Phase 3以降は未着手 |

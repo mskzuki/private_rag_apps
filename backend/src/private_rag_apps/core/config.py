@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     ingest_stale_running_sec: int = 600  # running行をstaleとみなす経過秒（暫定値。実測後見直し）
     ingest_stats_flush_every: int = 10  # 走査N件ごとにingest_runs.statsを逐次UPDATE
     ingest_embed_batch_size: int = 64  # Voyage embed呼び出し1回あたりのチャンク数上限
+    ingest_embed_min_interval_sec: float = 21.0  # Voyage embed呼び出し間の最低待機秒数（レート制限予防のペーシング。無支払い枠3RPM=20秒間隔が理論上限）
     ingest_trigger: Literal["cli", "demo"] = "cli"  # CLI --trigger 省略時の既定値（INGEST_TRIGGER）
     force_delete: bool = False  # CLI --force-delete 省略時の既定値（FORCE_DELETE）
 

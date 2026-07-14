@@ -263,3 +263,45 @@ class TestConcurrencyIntegration:
         finally:
             db.query(IngestRun).filter(IngestRun.id == running.id).delete()
             db.commit()
+
+
+class TestEmbedPacing:
+    def test_embed_calls_are_paced_at_least_min_interval_apart(self, corpus_dir, db, monkeypatch):
+        path_a = f"{uuid.uuid4()}.md"
+        path_b = f"{uuid.uuid4()}.md"
+        _write_corpus(corpus_dir, {path_a: "# A\n\ncontent a", path_b: "# B\n\ncontent b"})
+
+        import private_rag_apps.ingestion.indexer as indexer_module
+
+        monkeypatch.setattr(indexer_module, "_last_embed_call_at", None)
+
+        fake_now = [1000.0]
+        sleep_calls: list[float] = []
+
+        def fake_monotonic() -> float:
+            return fake_now[0]
+
+        def fake_sleep(seconds: float) -> None:
+            sleep_calls.append(seconds)
+            fake_now[0] += seconds
+
+        monkeypatch.setattr(indexer_module.time, "monotonic", fake_monotonic)
+        monkeypatch.setattr(indexer_module.time, "sleep", fake_sleep)
+
+        def embed_side_effect(texts, **kwargs):
+            fake_now[0] += 0.01  # simulate API call latency
+            return type("R", (), {"embeddings": [FAKE_EMBEDDING for _ in texts]})()
+
+        run_ids = []
+        try:
+            from unittest.mock import patch
+
+            with patch("private_rag_apps.ingestion.indexer.voyageai") as mock_voyage:
+                mock_voyage.Client.return_value.embed.side_effect = embed_side_effect
+                run_ids.append(run_ingestion(db, trigger="cli").id)
+
+            assert len(sleep_calls) == 1
+            expected_wait = settings.ingest_embed_min_interval_sec - 0.01
+            assert sleep_calls[0] == pytest.approx(expected_wait, rel=0.01)
+        finally:
+            _cleanup(db, [path_a, path_b], run_ids)
