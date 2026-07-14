@@ -15,6 +15,8 @@ from .diff import Action, classify, should_apply_deletions
 from .loader import Document, load_directory
 
 
+# モジュールグローバルで安全: running行/advisory lockの排他（concurrency.start_run）により
+# 同時に走る取り込みは常に1つだけなので、単一プロセス内での競合は起きない
 _last_embed_call_at: Optional[float] = None
 
 
@@ -28,6 +30,9 @@ def _pace_embed_call() -> None:
         if wait > 0:
             time.sleep(wait)
     _last_embed_call_at = time.monotonic()
+
+
+_real_pace_embed_call = _pace_embed_call
 
 
 class Stats(TypedDict):

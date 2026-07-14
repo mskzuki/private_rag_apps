@@ -274,6 +274,7 @@ class TestEmbedPacing:
         import private_rag_apps.ingestion.indexer as indexer_module
 
         monkeypatch.setattr(indexer_module, "_last_embed_call_at", None)
+        monkeypatch.setattr(indexer_module, "_pace_embed_call", indexer_module._real_pace_embed_call)
 
         fake_now = [1000.0]
         sleep_calls: list[float] = []

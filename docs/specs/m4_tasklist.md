@@ -46,7 +46,7 @@
 - [x] `ingest_runs.stats` 記録（`{added, updated, deleted, skipped, failed_files}` + `trigger`/`status`）と**逐次 UPDATE**（`INGEST_STATS_FLUSH_EVERY`。§4.5/§5.2）→ `indexer.py: _flush_stats`
 - [x] **CLI エントリポイント**（`cli/` の薄い層。`ingestion` サービスを呼ぶ。AGENTS.md §3）: `make ingest CORPUS=...`（`trigger='cli'`）/ `make demo`（`trigger='demo'`）/ **`FORCE_DELETE=1`**（安全弁バイパス。§4.3）を配線 → `cli/main.py`に`--trigger`/`--force-delete`追加、Makefile更新
 - [x] `core/config.py` に増分系設定を追加（`INGEST_DELETE_GUARD_RATIO` / `INGEST_ADVISORY_LOCK_KEY` / `INGEST_STALE_RUNNING_SEC` / `INGEST_STATS_FLUSH_EVERY` / `INGEST_EMBED_BATCH_SIZE`。§10。ハードコード禁止）
-- [ ] **（v0.6 追記）embed呼び出しのペーシング**（スペック §4.2/§10 v0.4）: `core/config.py` に `ingest_embed_min_interval_sec: float = 21.0` を追加。`indexer.py: _embed_documents` にVoyage呼び出し間の最低間隔待機を実装（同一source内バッチ間・source間の両方に効かせる）。ユニットテスト（`time.sleep`をmonkeypatchし実APIを叩かず間隔を検証）を `tests/test_ingestion_indexer.py` に追加
+- [x] **（v0.6 追記）embed呼び出しのペーシング**（スペック §4.2/§10 v0.4）: `core/config.py` に `ingest_embed_min_interval_sec: float = 21.0` を追加。`indexer.py: _embed_documents` にVoyage呼び出し間の最低間隔待機を実装（同一source内バッチ間・source間の両方に効かせる）。ユニットテスト（`time.sleep`をmonkeypatchし実APIを叩かず間隔を検証）を `tests/test_ingestion_indexer.py` に追加
 - [x] ユニットテスト（純粋部分）: content_hash 判定（無変更/変更/新規/復活）、削除安全弁のしきい値境界、スキップ分類、stats 集計 → `tests/test_ingestion_diff.py`
 - [x] 統合テスト（テスト DB・CLI 同期経路）: 全置換の原子性（更新中の検索が 0 件中間状態を見ない／埋め込み失敗で古い chunks 残存）、削除反映後に `retrieval` 対象外化、**復活**（無変更＝再埋め込みなし/変更＝全置換）、**stale running 回収で再実行可**、`FORCE_DELETE` で安全弁バイパス → `tests/test_ingestion_indexer.py` + `tests/test_ingestion_concurrency.py`
       - ※ **running 排他が「実行中ずっと効く」検証は Phase 3**（BackgroundTasks 経路）で実施（今回は同期経路の拒否のみ検証済み）
