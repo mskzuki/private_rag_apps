@@ -1,9 +1,10 @@
 import json
 import hashlib
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, List, cast
+from typing import Dict, Any, List, Optional, cast
 
 from private_rag_apps.core.config import settings
 from private_rag_apps.core.db import SessionLocal
@@ -16,6 +17,25 @@ from private_rag_apps.evals.judge import (
     evaluate_answer_relevance,
     evaluate_supplement_format,
 )
+
+_last_voyage_call_at: Optional[float] = None
+
+
+def _pace_voyage_call() -> None:
+    """retrieve_context()内のVoyage呼び出し(embed+rerank)前に呼ぶことで、アイテム間の
+    呼び出し間隔が settings.ingest_embed_min_interval_sec 未満にならないよう待機する。
+    ingestion/indexer.py::_pace_embed_call / evals/routing.py::_pace_voyage_call と同じ実装
+    (アプリコード[retrieval/]は変更しない方針のため、ここに複製している)。
+    既知の制約(docs/adr/0003_m7_t3_eval_baseline_gap.md): retrieve_context内部でembedと
+    rerankが連続して呼ばれる箇所は本関数ではペーシングできない(アイテム間のみ)。
+    """
+    global _last_voyage_call_at
+    now = time.monotonic()
+    if _last_voyage_call_at is not None:
+        wait = settings.ingest_embed_min_interval_sec - (now - _last_voyage_call_at)
+        if wait > 0:
+            time.sleep(wait)
+    _last_voyage_call_at = time.monotonic()
 
 
 def get_corpus_hash() -> str:
@@ -88,6 +108,8 @@ def run_eval() -> None:
 
             # 1. 検索
             # M3のevalではhybrid_rerankを強制する
+            # M7 T4: Voyage無支払い枠のレート制限予防のペーシング(ADR 0003)
+            _pace_voyage_call()
             ret_result = cast(
                 Dict[str, List[Dict[str, Any]]],
                 retrieve_context(
