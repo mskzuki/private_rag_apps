@@ -38,6 +38,8 @@ SaaS コネクタ（Notion/Slack/Drive）・OAuth・マルチユーザー・ACL 
 │   ├── requirements.md
 │   ├── architecture.md
 │   ├── db_design.md
+│   ├── decisions.md           # 決定ログ（経緯付き）
+│   ├── adr/                   # Architecture Decision Record。個別の設計判断を1件1ファイルで記録
 │   └── specs/                 # スペック駆動開発。実装前にここを更新する
 ├── seed/                      # シードコーパス（デモモード & Eval 兼用）
 ├── backend/
