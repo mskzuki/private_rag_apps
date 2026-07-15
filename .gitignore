@@ -18,4 +18,8 @@ backend/uv.lock
 
 # eval実行の生JSON・人間可読サマリ（都度生成）。baselineのみコミット対象
 # docs/eval_report.md はM5が手書きで管理する別ファイル（このディレクトリのlatest_summary.mdを引用する）
-backend/evals/reports/
+# 例外: M7 T2 のTHETAキャリブレーション記録（GO/NO-GO判定の根拠として恒久的に残す設計判断の記録。
+# AGENTS.md §12「大きな設計判断は仕様に根拠を残す」に該当するため、baseline同様コミット対象とする）
+backend/evals/reports/*
+!backend/evals/reports/m7-score-distribution.md
+!backend/evals/reports/m7-calibration-result.json
