@@ -155,7 +155,7 @@
 - [ ] direct groundedness: 人手裁定後の真の違反 0
 - [ ] 補足書式: 複合質問 5/5 で分離が確認できる（判定結果の人手確認込み）
 - [ ] 2 経路 + 補足発生ケースの手動スモークテスト（grounded 2 件 / direct 2 件 / 複合 1 件、SSE 経由）
-- [ ] `make eval`（既存 e2e）が T0 ベースライン非劣化 — grounded プロンプト変更の影響を特に注視
+- [x] ~~`make eval`（既存 e2e）が T0 ベースライン非劣化~~ **対象外（`docs/adr/0004_m7_make_eval_excluded.md`。ユーザー指示によりM7の完了条件から除外）**
 - [ ] AGENTS.md 更新済み
 
 **スコープ外:** rewrite の実装（T5）。SSE 新イベント（T6）。THETA の再チューニング（T2 の値を使う。満たせない場合は T2 に差し戻し、holdout 再使用の記録規約に従う）。
@@ -230,14 +230,14 @@
 - [ ] Langfuse 上で route 別のフィルタリング・レイテンシ比較ができることを確認
 - [ ] direct 経路の trace がダッシュボードで欠損扱いにならないことを確認
 - [ ] スペックの Status が Accepted に更新され、§10 が解消または明示的に持ち越し記録されている
-- [ ] `make eval-all` 全通過の最終確認
+- [ ] `make eval-routing` 全通過の最終確認（`make eval`はADR 0004により対象外）
 
 ---
 
 ## 全体の完了定義（M7 クローズ条件）
 
 - [ ] T0–T7 の全完了条件を満たす
-- [ ] `make eval-all` 通過（holdout: grounded 見逃し ≤ 1 件 / direct 誤り ≤ 3 件 / groundedness 真の違反 0 / 補足書式 5/5 / 既存 e2e 非劣化）
+- [ ] `make eval-routing` 通過（holdout: grounded 見逃し ≤ 1 件 / direct 誤り ≤ 3 件 / groundedness 真の違反 0 / 補足書式 5/5）。**既存 e2e（`make eval`）非劣化はADR 0004によりM7の完了条件から除外**
 - [ ] 依存ツリーに `langgraph` のみ追加され、langchain 系が含まれない
 - [ ] checkpointer 未使用のまま State のシリアライズ可能性が保たれている（M8 への引き継ぎ条件）
 - [ ] M8 候補（clarify / HITL / LLM grader の要否）の判断材料が eval レポートとして残っている
