@@ -71,4 +71,19 @@ describe("createChatAdapter SSE parsing", () => {
     const text = await collectFinalText(["event: token\n", 'data: "H"\n\n']);
     expect(text).toBe("H");
   });
+
+  it("ignores unknown SSE event types (e.g. future node_start/route_decided) without breaking the stream", async () => {
+    // M7 T3: グラフ導入後、node_start/route_decided/rewrite_result 等の新規イベント型が
+    // 将来追加される可能性がある（M7スペック§5.2、T6で実装予定）。バックエンドが未知の
+    // イベント型を流しても、フロントはクラッシュせず黙殺し、既知のイベント(token等)の
+    // 処理を継続できることを確認する（タスクT3レビュー指摘）
+    const text = await collectFinalText([
+      'event: node_start\ndata: {"node": "generate"}\n\n',
+      'event: route_decided\ndata: {"route": "grounded", "kept": 1, "dropped": 0, "top_score": 0.9}\n\n',
+      'event: some_future_event\ndata: "anything"\n\n',
+      'event: token\ndata: "H"\n\n',
+      'event: token\ndata: "i"\n\n',
+    ]);
+    expect(text).toBe("Hi");
+  });
 });
