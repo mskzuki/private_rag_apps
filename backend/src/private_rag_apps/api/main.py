@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from fastapi import FastAPI, Depends, Request, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, TypedDict
+from typing import List, Dict, Any, Optional, TypedDict, cast
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 from langfuse import observe, propagate_attributes
@@ -22,8 +22,10 @@ from private_rag_apps.ingestion.concurrency import (
     start_run,
 )
 from private_rag_apps.ingestion.indexer import execute_ingestion
-from private_rag_apps.retrieval.searcher import retrieve_context
-from private_rag_apps.generation.generator import condense, generate_answer_stream
+from private_rag_apps.generation.generator import condense
+from private_rag_apps.graph.builder import build_graph
+from private_rag_apps.graph.state import GraphState
+from private_rag_apps.graph.state import Message as HistoryMessage
 
 app = FastAPI(title="Private RAG Apps API")
 
@@ -147,16 +149,22 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
 
     # Get history for condense
     history = db.query(Message).filter(Message.conversation_id == conversation_id).order_by(Message.created_at).all()
-    history_dicts = [{"role": m.role, "content": m.content} for m in history]
+    history_dicts: List[HistoryMessage] = [{"role": m.role, "content": m.content} for m in history]
     
-    # Condense
+    # Condense（rewriteノードはT5で実装予定。T3時点ではグラフの外で従来通りcondenseし、
+    # 結果をgraphのuser_queryにそのまま渡す。retrieveノードはuser_queryをそのまま検索クエリに使う
+    # ＝ 現行の retrieve_context(db, query=search_query) と等価。M7スペックrev.3 §4.3 retrieve）
     if existing_messages_count > 0:
-        search_query = condense(body.message, history_dicts)
+        search_query = condense(body.message, cast(List[Dict[str, str]], history_dicts))
     else:
         search_query = body.message
 
-    # Retrieval
-    context_chunks = retrieve_context(db, query=search_query)
+    graph = build_graph(db)
+    initial_state: GraphState = {
+        "conversation_id": conversation_id,
+        "user_query": search_query,
+        "history": history_dicts,
+    }
 
     async def event_generator():
         message_id = str(uuid.uuid4())
@@ -166,8 +174,8 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
         first_token = False
 
         try:
-            # Generate Answer
-            for event in generate_answer_stream(search_query, context_chunks):
+            # Retrieve → Generate をグラフ経由で実行し、custom streamのイベントを消費する
+            async for event in graph.astream(initial_state, stream_mode="custom"):
                 if await request.is_disconnected():
                     has_error = True
                     break

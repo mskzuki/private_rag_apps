@@ -36,8 +36,8 @@ def test_conversations_crud():
     db.commit()
     db.close()
 
-@patch("private_rag_apps.api.main.retrieve_context")
-@patch("private_rag_apps.api.main.generate_answer_stream")
+@patch("private_rag_apps.graph.nodes.retrieve.retrieve_context")
+@patch("private_rag_apps.graph.nodes.generate.generate_answer_stream")
 @patch("private_rag_apps.api.main.condense")
 def test_chat_bulk_save_and_history(mock_condense, mock_generate, mock_retrieve):
     # Mock retrieval
