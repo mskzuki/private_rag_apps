@@ -23,3 +23,7 @@ backend/uv.lock
 backend/evals/reports/*
 !backend/evals/reports/m7-score-distribution.md
 !backend/evals/reports/m7-calibration-result.json
+# M7 T4: routing eval / direct groundedness eval の判定記録も同様の理由で恒久的に残す
+!backend/evals/reports/m7-routing-eval-result.md
+!backend/evals/reports/m7-routing-eval-result.json
+!backend/evals/reports/m7-direct-groundedness.md
