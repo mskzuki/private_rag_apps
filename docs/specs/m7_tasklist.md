@@ -1,202 +1,195 @@
 # M7 タスクリスト: Adaptive Routing (rev.3)
 
-- Spec: `M7-adaptive-routing-spec.md` (rev.3)
-- Status: Not Started
-- 実行順序: T0 →（R-A 判定）→ T1 → T2 →（GO/NO-GO）→ T3 → T4 → T5 → T6 → T7
+- Spec: `m7_adaptive_routing.md` (rev.3)
+- Status: In Progress（T0 完了）
+- 実行順序: T0 → T1 → T2 →（GO/NO-GO 判定）→ T3 → T4 → T5 → T6 → T7
 - 規約: 各タスクは「完了条件をすべて満たす」まで次に進まない。スコープ外の変更を行わない。判断に迷う点はタスク内の「実装ノート」の範囲でのみ裁量を認め、それ以外はスペックに差し戻す
 
+**2026-07-14 実装前レビューでの決定事項（詳細はスペック rev.3 参照）:**
+1. T5 rewrite は既存 `generation.condense()` を再利用・拡張する（新規 Anthropic クライアントは追加しない）
+2. グラフ実装は新規トップレベルパッケージ `private_rag_apps/graph/` とする（`api/` 配下ではない）。AGENTS.md §3 改訂を T3 に追加
+3. `retrieval/searcher.py::_rerank()` に `rerank_score` を追加する最小限の変更を T4 で行う（retrieval 内部無変更方針の唯一の例外）
+4. OpenAI/Voyage/Langfuse のアカウントブロッカーが 2026-07-14 時点で未解消。実 API 呼び出しを伴うタスク（T1 followup 収集、T2 一括検索、T4/T5 の LLM 呼び出し）は着手前に都度状況を確認する
+
 ---
 
-## T0: 前提確認（ローカル LLM 環境の検証を含む）
+## T0: 前提確認
 
-**目的:** M7 が依存する実装・インフラの前提を着手前に確認する。**特に reranker の有無は grade 設計の成否を分ける最優先項目（スペック §9 R-A）。**
+**目的:** M7 が依存する実装の完了状況を確認する（スペック群の存在 ≠ 実装完了）。
 
 **作業項目:**
-1. **【最優先】reranker の確認:** 現在の retrieval パイプラインが返すスコアが (a) cross-encoder reranker による絶対スコアか (b) RRF スコアのみか を特定する
-   - **RRF スコアのみの場合 → R-A 判定を発動**（下記「R-A 判定」参照）。T1 以降に進まない
-2. **Ollama の structured output 検証:** OpenAI 互換エンドポイント経由で `response_format: {"type": "json_schema"}` が使用中モデルで動作するか、簡単な JSON 出力で確認。不可なら Ollama ネイティブ API (`/api/chat` の `format`) で代替可能かを確認し、結果を記録（スペック §4.3 / R-C）
-3. **TTFT ベースライン測定:** 現行の generate（context あり / なし）の TTFT と TPS を計測して記録。rewrite 導入後のレイテンシ相対評価の基準にする（スペック §5.1 / R-D）
-4. **M2:** `/chat` streaming が既存イベント型で動作していることを確認
-5. **M3:** 履歴のロード・保存と generate への履歴注入の実装箇所を特定し、パスを記録（T3 の移設対象）
-6. **M4:** `make eval` が現在通過することを確認し、ベースラインスコアを記録
-
-**R-A 判定（reranker 不在の場合）:**
-- M7 を保留し、以下から選択して起票する:
-  - (a) ローカル cross-encoder reranker の導入を別マイルストーンとして先行実装
-  - (b) grade を LLM grader 方式に変更（スペック §8.5。ただし単一モデルでの prefill コスト増を許容できる場合のみ）
-- **どちらを選ぶかの判断材料（現行スコアの分布・レイテンシ許容度）を添えて、この時点で一度立ち止まる**
+1. M2（SSE streaming）: `/chat` の streaming が本スペック §5.2 の既存イベント型で動作していることを確認
+2. M3（conversation history）: 履歴のロード・保存と、generate への履歴注入の実装箇所を特定し、パスをタスクノートに記録（T3 の移設対象）
+3. M4（evaluation）: `make eval` が現在通過することを確認し、ベースラインスコアを記録
+4. retrieval パイプライン: rerank score が API/サービス層から取得可能であることを確認（grade の入力）
 
 **完了条件:**
-- [ ] reranker の有無が確定し、RRF のみの場合は R-A 判定の結論が記録されている（GO の場合のみ T1 へ）
-- [ ] Ollama の structured output 手段が確定している（json_schema or ネイティブ format）
-- [ ] TTFT / TPS ベースラインが記録されている
-- [ ] M2/M3/M4 の確認結果と該当コードパスが記録されている
+- [x] 上記 4 点の確認結果と該当コードパスがタスクノートに記録されている
+- [x] 未完了の依存が見つかった場合: M7 を保留し、不足分の実装タスクを別途起票（M7 のスコープに取り込まない）→ 該当なし。retrieval のみ小さな追加実装が必要と判明したが、M7（T4）のスコープ内で対応可能と判断（下記タスクノート）
+
+**タスクノート（2026-07-14 記録）:**
+1. **M2 SSE streaming:** `event_generator()`（`api/main.py`）が `token` / `citations` / `error` / `done` を送出済み。スペックの表記は `citation`（単数）だったが実装は `citations`（複数）のため、スペック §5.2 を rev.3 で修正した
+2. **M3 history:** 履歴は `api/main.py` で DB からロードされ、`generation.condense(query, history_messages)`（`generation/generator.py`）にのみ渡される。**`generate_answer_stream(query, context_chunks)` には履歴が渡らない**（generate は履歴を見ない実装のまま）。スペック rev.1/rev.2 は「generate も履歴を注入される」という誤った前提だったため rev.3 で訂正済み。この発見を受け、**T5 は新規実装ではなく既存 `condense()` の再利用・拡張とする**（rev.3 §4.3。ユーザー承認済み）
+3. **M4 eval:** OpenAI/Voyage/Langfuse のアカウント側ブロッカー（2026-07-13〜14発生、2026-07-14朝時点で未解消）のため `make eval` の再実行は見送り。既存の記録済みベースライン（`backend/evals/reports/latest_summary.md` / `backend/evals/baselines/current.json`、2026-07-13T08:49:51 UTC、**PASSED**: Recall@5=0.935 / Recall@10=0.968 / nDCG@10=0.742 / MRR=0.666（reranked）、Faithfulness=0.935 / Answer Relevance=0.774、`llm_provider=openai` 既定設定）を暫定ベースラインとして採用する。ブロッカー解消後、T3/T4 完了条件の非劣化確認で改めて実測する
+4. **retrieval rerank score:** **現状 `retrieve_context()` は chunk ごとの rerank score を返していない**。`_rerank()`（`retrieval/searcher.py`）は Voyage の結果でチャンクを並べ替えるのみで、`_format_chunks()` の出力にスコアを含めない。**T4 で `rerank_score` フィールドを追加する最小限の変更を行う**（ランキングロジック自体は変更しない。ユーザー承認済み。rev.3 §4.3 grade）
 
 ---
 
-## T1: routing eval データセット + コーパス固有語彙リスト作成
+## T1: routing eval データセット作成
 
-**目的:** 閾値キャリブレーションと決定的 eval チェックの基盤を作る。実装より先に完了させる。
+**目的:** 閾値キャリブレーションと grade 精度検証の基盤を作る。実装より先に完了させる。
 
 **成果物:**
-- `eval/datasets/routing.jsonl`（スペック §8.1 のスキーマ。`split` 込み）
-- `eval/datasets/routing-README.md`（カテゴリ定義・ラベリング基準・followup 作成手順・分割 seed の記録）
-- `eval/datasets/corpus_vocabulary.txt`（スペック §8.2）
+- `backend/evals/dataset/routing.jsonl`（スペック §7.1 のスキーマ。`split` フィールド込み。既存 `m3_golden.jsonl` と同じ置き場）
+- `backend/evals/dataset/routing-README.md`（カテゴリ定義・ラベリング基準・followup 作成手順の記録)
 - 既存 e2e eval セットへの複合質問 5 件の追加
 
 **作業項目:**
-1. スキーマ実装（スペック §8.1）。`split: "calibration" | "holdout"` を全行に付与
-2. corpus 40 件 / general 40 件 / ambiguous 30 件 / followup 20 件を作成（rev.2 T1 の規約を踏襲）
-   - corpus: 根拠ドキュメントの実在を 1 件ずつ確認しパスを README に記録
-   - general: コーパスに関連記述がないことを検索で確認。ドメイン分散
-   - ambiguous: 手作業。expected_route を記述の実在で機械的決定、根拠を全件記録
-   - followup: history の assistant 応答は実アプリ生成の実物を使用。`expected_search_query` を記録。direct 期待を 3–5 件含める
-3. **calibration / holdout 分割:** カテゴリ内層化 70/30。乱数 seed を README に記録
-4. **`corpus_vocabulary.txt` 作成（スペック §8.2）:** コーパスにのみ現れる固有語彙を 30–50 語キュレーション。**一般技術用語（RRF, HNSW, pgvector 等）を除外**し、「コーパスを読んでいなければ書けない語」のみに絞る。除外・採用の判断基準を README に記録
-5. 複合質問 5 件（一部 corpus・一部一般論）を作成し、既存 e2e eval セットに追加
+1. スキーマ実装: スペック §7.1 の通り。`split: "calibration" | "holdout"` を全行に付与
+2. corpus 40 件: 既存 eval セットから流用・改変。根拠ドキュメントの実在を 1 件ずつ確認し、パスを README に記録
+3. general 40 件: 一般知識質問を新規作成。ドメイン分散（プログラミング一般 / 統計 / インフラ一般 / RAG 一般論）。**コーパスに関連記述がないことを検索で確認**
+4. ambiguous 30 件: 手作業で作成。expected_route は「コーパスに関連記述が実在するか」で機械的に決定し、判断根拠を全件 README に記録
+5. followup 20 件: history 付き。**history の assistant 応答は実アプリで生成した実物を記録して使う**（作成手順を README に規定）。`expected_search_query` を記録。expected_route は記述の実在で決定し、**direct 期待のフォローアップも 3–5 件含める**（rewrite の副作用検出用）
+6. **calibration / holdout 分割:** カテゴリ内層化で 70/30。乱数 seed を README に記録（再現可能な分割）
+7. 複合質問 5 件（一部 corpus・一部一般論）を作成し、**routing.jsonl ではなく既存 e2e eval セットに追加**（補足書式の検証用。スペック §7.2）
 
 **完了条件:**
 - [ ] 全件が JSON Lines としてパース可能、必須フィールド欠損なし
-- [ ] grounded 期待の全件について根拠ドキュメントのパスが記録されている
+- [ ] grounded 期待の全件について根拠ドキュメントのパスが README に記録されている
 - [ ] direct 期待の全件について「コーパスに記述なし」の確認が済んでいる
-- [ ] 件数: corpus ≥ 40, general ≥ 40, ambiguous ≥ 30, followup ≥ 20、各カテゴリ holdout 30% ± 1 件
-- [ ] `corpus_vocabulary.txt` が 30–50 語で、一般語を含まないことをレビュー済み
+- [ ] 件数: corpus ≥ 40, general ≥ 40, ambiguous ≥ 30, followup ≥ 20、各カテゴリの holdout が 30% ± 1 件
 - [ ] e2e セットに複合質問 5 件が追加されている
 
 **スコープ外:** eval 実行スクリプトの実装（T2 / T4）。アプリケーションコードへの変更一切。
 
-**実装ノート:** ambiguous の作成が最も時間を要する（30 件で 3〜4 時間目安）。`corpus_vocabulary.txt` の語彙選定は direct 捏造チェックの精度を直接左右するので、迷ったら**入れない**（false positive を避ける）方向に倒す。
+**実装ノート:** ambiguous の作成が最も時間を要する（30 件で 3〜4 時間目安）。corpus 質問から固有名詞を落として一般化する操作で境界ケースを量産できる。
 
 ---
 
-## T2: 関連度スコア分布分析と THETA 初期値決定
+## T2: rerank score 分布分析と THETA 初期値決定
 
-**目的:** 閾値方式の成立可否を実装前に検証する（スペック §9 R-F）。
-
-**前提:** T0 で reranker の存在が確認済みであること（RRF のみなら本タスクは実行しない）。
+**目的:** 閾値方式の成立可否を実装前に検証する（スペック §8 リスクの早期検証）。
 
 **成果物:**
-- `eval/scripts/analyze_score_distribution.py`
-- `eval/scripts/calibrate_threshold.py`
-- `eval/reports/m7-score-distribution.md`
+- `backend/evals/analyze_score_distribution.py`（既存の `backend/evals/generate_dataset.py` と同じ置き場: importable パッケージ外の一回性スクリプト）
+- `backend/evals/calibrate_threshold.py`
+- `backend/evals/reports/m7-score-distribution.md`（分析結果と THETA の決定記録。既存 `reports/` と同じ置き場）
 
 **作業項目:**
-1. T1 の全クエリ（followup は `expected_search_query` を使用）を既存 retrieval に流し、スコアを全件記録
-2. カテゴリ別スコア分布を可視化（grounded 期待 vs direct 期待の top-1 スコア分布の分離度）
-3. grid search（**calibration split のみ**）: 「grounded 見逃し率 ≤ 0.05」制約、direct 適中最大化で THETA を決定
-4. **決定した THETA を holdout に一度だけ適用**し、スペック §8.3 の件数基準（grounded 見逃し ≤ 1 件、direct 誤り ≤ 3 件）で評価。結果を記録
-5. holdout を見て THETA を再調整しない（する場合は calibration に戻り、holdout 再使用は 1 回までとして明記）
+1. T1 の全クエリ（followup は `expected_search_query` を使用。rewrite はまだ存在しないため）を既存 retrieval パイプラインに流し、rerank score を全件記録
+2. カテゴリ別スコア分布を可視化（grounded 期待 vs direct 期待の top-1 score 分布の分離度を確認）
+3. grid search（**calibration split のみ使用**）: 「grounded 見逃し率 ≤ 0.05」を制約条件、direct 適中の最大化を目的関数として THETA を決定
+4. **決定した THETA を holdout に一度だけ適用**し、スペック §7.2 の件数基準（grounded 見逃し ≤ 1 件、direct 誤り ≤ 3 件）で評価。結果と THETA をレポートに記録
+5. holdout の結果を見て THETA を再調整しない（する場合は calibration に戻り、holdout 再使用は 1 回までとしてレポートに明記する）
 
 **完了条件:**
 - [ ] スコア分布レポートが作成され、分離度が確認できる
-- [ ] THETA 初期値が calibration のみで決定され、決定過程が記録されている
-- [ ] **GO/NO-GO 判定（holdout 上）:** grounded 見逃し ≤ 1 件 かつ direct 誤り ≤ 3 件 → GO（T3 へ）。満たさない → NO-GO（スペック §8.5 に従い LLM grader スペック起票に切り替え）
+- [ ] THETA 初期値が calibration のみで決定され、決定過程がレポートに記録されている
+- [ ] **GO/NO-GO 判定（holdout 上）:** grounded 見逃し ≤ 1 件 かつ direct 誤り ≤ 3 件 → GO（T3 へ）。満たさない → NO-GO（T3 以降を保留し、スペック §7.4 に従い LLM grader スペックの起票に切り替える）
 
 **スコープ外:** アプリケーションコードへの変更一切。THETA の config 化（T4）。
 
-**実装ノート:** retrieval の呼び出しは既存サービス層の関数を import する。API 経由にしない。
+**実装ノート:** retrieval の呼び出しは既存サービス層の関数を import して使う。API 経由にしない（generate を走らせないため）。
 
 ---
 
-## T3: LangGraph 最小導入（pass-through + SSE 構造検証）
+## T3: LangGraph 最小導入（pass-through グラフ + SSE 互換検証）
 
-**目的:** ストリーミング接合という最大のリスクを、機能追加ゼロで単独検証する。完了時点で外形的挙動は現行と同等であること。
+**目的:** ストリーミング接合という最大の技術リスクを、機能追加ゼロの状態で単独検証する。**このタスク完了時点で外形的挙動は現行と同等であること。**
 
 **成果物:**
-- `pyproject.toml`: `langgraph` 追加（**`langchain` / `langchain-openai` を追加しないこと**）
-- `app/graph/state.py`: `GraphState` TypedDict（スペック §4.2）
-- `app/graph/builder.py`: retrieve → generate の 2 ノードグラフ
-- `app/graph/nodes/retrieve.py`, `app/graph/nodes/generate.py`
+- `backend/pyproject.toml`: `langgraph` 追加（**`langchain` / `langchain-anthropic` を追加しないこと**）
+- `backend/src/private_rag_apps/graph/state.py`: `GraphState` TypedDict（スペック §4.2）
+- `backend/src/private_rag_apps/graph/builder.py`: retrieve → generate のみの 2 ノードグラフ
+- `backend/src/private_rag_apps/graph/nodes/retrieve.py`, `.../graph/nodes/generate.py`
 - `/chat` ハンドラのグラフ経由への切り替え
 - stub モデルによる SSE 構造検証テスト
+- **AGENTS.md §3 改訂**: 新設する `graph` パッケージの依存方向ルールを明文化（`graph` は `generation`/`retrieval` を独立に import してよい／`api` は `graph` 経由でこれらを呼ぶ／履歴のロード・永続化は `api` に残る。スペック rev.3 §4.1）
 
 **作業項目:**
-1. `GraphState` 定義。**Pydantic モデル・コネクション類を State に含めない**。`json.dumps(state)` が通るシリアライズ可能性テストを追加
-2. retrieve ノード: 既存 retrieval サービスの薄いラッパー。`search_query = user_query`（rewrite は T5）
-3. generate ノード: 既存の生成ロジックを移設。**既存 OpenAI 互換クライアント・prefix cache を意識したプロンプト順序・Langfuse 計装・履歴注入（T0 で特定したパス）をそのまま維持**。`get_stream_writer()` で `stream_mode="custom"` に流す。**この時点ではデリミタ処理を入れない**（T4 で追加）
-4. FastAPI ハンドラ: `graph.astream(stream_mode="custom")` を消費し既存 SSE フォーマットに変換。履歴ロード・応答永続化はハンドラ層に残す
-5. **構造検証（自動・決定的）:** stub クライアント（固定文字列）で SSE イベント型の系列・スキーマ・順序を現行キャプチャと比較。**実 LLM での diff 比較は行わない**
-6. **実機検証（手動）:** 実モデルで TTFT・トークン順序・citation・done を確認。**T0 の TTFT ベースラインと比較し、グラフ化によるオーバーヘッドがないことを確認**
-7. 未知イベント型を 1 つ流しフロントが壊れないことを確認。壊れる場合の default-ignore 追加は本タスクスコープに含める
+1. `GraphState` をスペック §4.2 の通り定義。**Pydantic モデル・コネクション類を State に含めない**（スペック §3.4）。`json.dumps(state)` が通ることのシリアライズ可能性テストを追加
+2. retrieve ノード: 既存 retrieval サービスの薄いラッパー。`search_query` には `user_query` をそのまま入れる（rewrite は T5）
+3. generate ノード: 既存の生成ロジックを移設。`get_stream_writer()` でトークンを `stream_mode="custom"` に流す。**既存 SDK ラッパー・prompt cache 制御・Langfuse 計装・履歴注入（T0 で特定したパス）をそのまま維持する**
+4. FastAPI ハンドラ: `graph.astream(stream_mode="custom")` を消費し、既存 SSE フォーマットに変換。履歴ロードと応答永続化はハンドラ層に残す（グラフ外、スペック §3.4）
+5. **構造検証（自動・決定的、スペック §5.3）:** 生成を stub クライアント（固定文字列）に差し替えた統合テストで、SSE イベント型の系列・JSON スキーマ・順序を現行実装のキャプチャと比較。**LLM 生成は非決定的であるため実 LLM でのペイロード diff 比較は行わない**
+6. **実機検証（手動）:** 実 LLM で TTFT・トークン順序・citation・done を assistant-ui 上で確認
+7. 未知イベント型を 1 つ流し、フロントが壊れないことを確認（T6 の前提検証）。壊れる場合、SSE ハンドラへの default-ignore 追加は本タスクのスコープに含める
 
 **完了条件:**
 - [ ] 既存の全テストが通過（リグレッションゼロ）
-- [ ] `make eval` が T0 ベースラインと同等スコア
-- [ ] stub 構造検証テストが通過し CI に組み込まれている
-- [ ] 実機の TTFT がベースライン非劣化（グラフ化オーバーヘッドの確認）
+- [ ] `make eval` が T0 で記録したベースラインと同等スコア（generation 品質の非劣化）
+- [ ] stub 構造検証テストが通過し、CI に組み込まれている
+- [ ] 実機検証の結果（TTFT 目視比較含む）がタスクノートに記録されている
 - [ ] 未知イベント型に対するフロントの無視動作を確認済み
 - [ ] langchain 系パッケージが依存ツリーに入っていないこと（`pip list` で確認）
 
-**スコープ外:** grade / rewrite / 経路分岐 / 新規 SSE イベント / デリミタ処理。プロンプト変更一切。
+**スコープ外:** grade / rewrite / 経路分岐 / 新規 SSE イベント。プロンプト変更一切（`make eval` 対象変更を発生させない）。
 
 ---
 
-## T4: grade ノードと 2 経路分岐 + 補足デリミタ処理
+## T4: grade ノードと 2 経路分岐
 
-**目的:** M7 の中核。THETA による grade、2 経路プロンプト、補足デリミタの検出処理。
+**目的:** M7 の中核。THETA による grade と、grounded / direct のプロンプト実装。
 
 **成果物:**
-- `app/graph/nodes/grade.py`（LLM 不使用の純関数）
-- `app/config.py`: `ROUTING_THETA`（T2 の決定値）
-- プロンプト 2 種: `grounded`（**デリミタ書式ルール込み**）/ `direct`（コーパス言及禁止ルール込み）
-- generate へのデリミタ検出・`supplement_start` 発火処理（スペック §5.4）
-- `eval/scripts/eval_routing.py` + `make eval-routing`（`--cached-rewrite` 付き。T5 まで rewrite パススルー）
-- `eval/scripts/eval_direct.py` + `make eval-direct`（corpus_vocabulary による決定的捏造チェック）
-- 複合質問 5 件のデリミタ検証の `make eval` 組み込み
-- AGENTS.md 更新
+- `backend/src/private_rag_apps/graph/nodes/grade.py`（LLM を使わない純関数）
+- `backend/src/private_rag_apps/retrieval/searcher.py`: `_rerank()` の返り値に `rerank_score` フィールドを追加（最小限の追加。ランキングロジック自体は無変更。T0 タスクノート・スペック rev.3 §4.3 grade 参照）
+- `backend/src/private_rag_apps/core/config.py`: `routing_theta`（T2 の決定値をデフォルトに）
+- プロンプト 2 種: `grounded`（**「一般知識に基づく補足」書式ルール込み**。スペック §4.3 generate）/ `direct`（コーパス言及禁止ルール込み）
+- `backend/src/private_rag_apps/evals/` に routing eval 実行コード（`make eval-routing` ターゲット。`--cached-rewrite` オプション付き。T5 までは rewrite パススルー）
+- direct groundedness eval（LLM-as-judge + 人手裁定手順）
+- 複合質問 5 件の補足書式検証の `make eval` への組み込み
+- AGENTS.md 更新: THETA・rewrite プロンプト・grade ロジック変更時の `make eval-routing` 必須化、grounded / direct プロンプト変更時の `make eval` 必須化
 
 **作業項目:**
-1. grade ノード実装（スペック §5.3）。conditional edge で 2 経路分岐、generate は `state["route"]` でプロンプト切り替え
-2. grounded プロンプト: 既存 RAG プロンプトにデリミタ書式ルールを追加（スペック §5.4）。**カバレッジ判定をプロンプトに委ねる設計であることをコードコメントに明記**（後任が grade に判定ロジックを足す逸脱を防ぐ）
-3. direct プロンプト: スペック §5.4 の通り
-4. **デリミタ処理:** streaming バッファで `---SUPPLEMENT---` の行を検出し `supplement_start` を発火、デリミタ行自体は送出しない。**改行を跨いでデリミタが分割されるケース、デリミタ 2 回出現のケースを処理**（スペック §5.4）
-5. `make eval-routing`: rewrite（T5 までパススルー）→ retrieve → grade を実行し、calibration / holdout 別に §8.3 の route 指標を出力。**generate は実行しない**
-6. `make eval-direct`: direct 経路を実際に生成し、回答本文に `corpus_vocabulary.txt` の語が出現するか文字列マッチ。**検出時は人手裁定手順（一般語混入なら語彙リスト修正）を README に規定**
-7. 複合質問 5 件: `supplement_emitted` とデリミタ回数を検証（決定的）+ 補足内容の分離を人手確認
+1. `retrieval/searcher.py::_rerank()` の返り値の各チャンク dict に `rerank_score`（Voyage の relevance score）を追加する（T0 タスクノート参照。ランキング順序・検索ロジックは無変更）
+2. grade ノード実装（スペック §4.3）。conditional edge で 2 経路分岐、generate は `state["route"]` でプロンプト切り替え
+3. grounded プロンプト: 既存 RAG プロンプトに補足書式ルールを追加。**カバレッジ判定（どこまで context で答えられるか）はプロンプト指示に委ねる設計であることをコードコメントに明記**（後任が grade に判定ロジックを足そうとするのを防ぐ）
+4. direct プロンプト: スペック §4.3 の通り
+5. `make eval-routing`: rewrite（T5 まではパススルー）→ retrieve → grade を実行し、calibration / holdout 別にスペック §7.2 の指標を出力。**generate は実行しない**
+6. direct groundedness eval: direct 経路の回答（general カテゴリ holdout から 10 件 + calibration から 10 件）への LLM-as-judge。**judge が違反と判定した件は人手で裁定し、真の違反のみカウントする手順をスクリプトの README に規定**
+7. 補足書式検証: e2e eval の複合質問 5 件で、context 外の内容が補足セクションに分離されていることを判定
 
 **完了条件:**
-- [ ] `make eval-routing`（holdout）: grounded 見逃し ≤ 1 件、direct 誤り ≤ 3 件
-- [ ] `make eval-direct`: corpus_vocabulary 検出 0 件（人手裁定後の真の捏造 0）
-- [ ] 複合質問: デリミタ 5/5 で正しく発火（1 回のみ）、補足内容の分離 5/5
-- [ ] デリミタのバッファ処理テスト（分割・2 回出現）が stub で通過
-- [ ] 2 経路 + 補足発生の手動スモークテスト（grounded 2 / direct 2 / 複合 1、SSE 経由）
-- [ ] `make eval`（e2e）が T0 ベースライン非劣化
+- [ ] `make eval-routing`（holdout）: grounded 見逃し ≤ 1 件、direct 誤り ≤ 3 件（T2 の GO 判定の再現）
+- [ ] direct groundedness: 人手裁定後の真の違反 0
+- [ ] 補足書式: 複合質問 5/5 で分離が確認できる（判定結果の人手確認込み）
+- [ ] 2 経路 + 補足発生ケースの手動スモークテスト（grounded 2 件 / direct 2 件 / 複合 1 件、SSE 経由）
+- [ ] `make eval`（既存 e2e）が T0 ベースライン非劣化 — grounded プロンプト変更の影響を特に注視
 - [ ] AGENTS.md 更新済み
 
-**スコープ外:** rewrite の実装（T5）。SSE の `node_start` / `route_decided` / `rewrite_result` イベント（T6）。THETA 再チューニング。
+**スコープ外:** rewrite の実装（T5）。SSE 新イベント（T6）。THETA の再チューニング（T2 の値を使う。満たせない場合は T2 に差し戻し、holdout 再使用の記録規約に従う）。
 
-**実装ノート:** 補足デリミタが安定して守れない場合（R-B）、プロンプト調整の無限ループに入らず、事実を記録して T4 を一旦完了とし、代替（例: 補足を別リクエストで生成、または grounded と direct の 2 段生成）を M7 追補スペックとして起票する。
+**実装ノート:** 補足書式が LLM-as-judge で安定して守れない場合、その事実を記録して T4 を一旦完了とし、構造化出力化（補足を別フィールドで返させる）を M7 追補スペックとして起票する（スペック §8 のリスク対応）。プロンプト調整の無限ループに入らない。
 
 ---
 
 ## T5: rewrite ノード
 
-**目的:** 会話履歴を考慮したクエリ書き換え。単一モデル・直列 GPU 前提のスキップ制御を含む。
+**目的:** 会話履歴を考慮したクエリ書き換えで followup 質問の retrieval 品質を確保する。
 
 **成果物:**
-- `app/graph/nodes/rewrite.py`（**temperature=0 + seed 固定**、履歴空ならスキップ）
-- rewrite プロンプト + JSON schema（T0 で確定した手段: json_schema or ネイティブ format）
-- `eval_routing.py` の followup 評価と `--cached-rewrite` の実キャッシュ対応
+- `backend/src/private_rag_apps/generation/generator.py`: `condense()` を拡張し `rewrite_applied` を追加で返す（**temperature=0 を明示指定**。スペック §3.5 / §4.3 rev.3。新規 Anthropic クライアントは追加しない）
+- `backend/src/private_rag_apps/graph/nodes/rewrite.py`: 拡張後の `condense()` を呼ぶグラフノードの薄いラッパー
+- `eval_routing` の followup 評価と `--cached-rewrite` の実キャッシュ対応
 
 **作業項目:**
-1. rewrite ノード実装（スペック §5.1）。**generate と同一モデル**、temperature=0、seed 固定、N=4（config 化）
-2. **スキップ制御:** `history` が空なら LLM を呼ばず即通過（`rewrite_applied=False`）。**語彙ヒューリスティックによるスキップは実装しない**
-3. structured output: T0 で確定した手段で `{"search_query": str, "rewrite_applied": bool}` を取得
-4. フォールバック: LLM 失敗・JSON パース失敗時は `search_query = user_query` で続行、警告ログ + Langfuse 記録
-5. `--cached-rewrite`: rewrite 結果を jsonl キャッシュし、閾値チューニング時は retrieval 以降のみ再実行
-6. followup 評価: `expected_search_query` との意味一致（embedding 類似度。**LLM-as-judge は使わない**）と retrieval hit@k を測定
-7. 非 followup（corpus / general）での過剰書き換え率（`rewrite_applied` の false positive）を確認
-8. レイテンシ計測: rewrite の追加分を Langfuse で記録し、**T0 の TTFT ベースラインとの相対値**で評価
+1. `condense()` の拡張（スペック §4.3 rev.3）。新規クライアント・新規モデルは追加せず、既存 `get_llm_client()` / `settings.llm_provider` をそのまま使う。**temperature=0** を明示指定。履歴は既存の `settings.condense_history_turns`（直近 N ターン）をそのまま使う
+2. グラフの rewrite ノードは拡張後の `condense()` を呼ぶ薄いラッパーとして実装（新規ロジックを持たない）
+3. フォールバック確認: LLM 失敗時 `search_query = user_query` で続行、警告ログ + Langfuse へ記録（`condense()` の既存フォールバックを踏襲）
+4. `--cached-rewrite`: rewrite 結果を jsonl キャッシュし、閾値チューニング時は retrieval 以降のみ再実行できるようにする
+5. followup 評価: `expected_search_query` との意味一致と、rewrite 後クエリでの retrieval hit@k を測定
+6. 非 followup クエリ（corpus / general）での過剰書き換え（`rewrite_applied` の false positive）率を確認
+7. レイテンシ計測: rewrite の追加分を Langfuse で p50 / p95 記録
 
 **完了条件:**
-- [ ] followup（holdout）: rewrite 後の retrieval hit@k が rewrite なし比 非劣化
+- [ ] followup（holdout）: rewrite 後の retrieval hit@k が rewrite なし比で非劣化
 - [ ] followup の direct 期待ケース（3–5 件）が rewrite 後も正しく direct になる
-- [ ] corpus / general: `make eval-routing` 指標が T4 完了時から非劣化
-- [ ] 履歴空のスキップ動作テスト（LLM が呼ばれないことを mock で確認）
-- [ ] フォールバック動作テスト（LLM 呼び出しを mock で失敗させる）
-- [ ] レイテンシ記録。**TTFT ベースライン超過が確認された場合は N 削減の検討事項として T7 に引き継ぐ**（M7 内では対応しない）
+- [ ] corpus / general: `make eval-routing` の指標が T4 完了時から非劣化（rewrite の副作用がないこと）
+- [ ] フォールバック動作のテスト通過（LLM 呼び出しを mock で失敗させる）
+- [ ] レイテンシ p95 の記録。**+800ms 超過が確認された場合は N 削減の検討事項として T7 のドキュメントに引き継ぐ**（M7 内では対応しない。スペック §4.3）
 
-**スコープ外:** N の最適化（初期値 4 で固定）。履歴の事前要約化。モデル分割。
+**スコープ外:** N の最適化（初期値 6 で固定）。履歴の事前要約化。新規 LLM プロバイダの追加。
 
 ---
 
@@ -205,40 +198,38 @@
 **目的:** グラフ実行の透明性をユーザーに提供する（最小実装）。
 
 **成果物:**
-- SSE イベント追加: `node_start`, `route_decided`, `rewrite_result`（`supplement_start` は T4 で実装済み）
-- フロント: route バッジ表示（grounded / direct の 2 状態）+ 補足セクションの視覚的区切り
+- SSE イベント追加: `node_start`, `route_decided`, `rewrite_result`（スペック §5.2）
+- フロント: route バッジ表示（**grounded / direct の 2 状態**）
 
 **作業項目:**
-1. 各ノード先頭で `node_start` を送出。grade 完了時に `route_decided`（direct 時 `top_score: null`）、rewrite 完了時に `rewrite_result`（スキップ時も `applied: false` で送出）
+1. 各ノードの先頭で writer に `node_start` を送出。grade 完了時に `route_decided`（direct 時は `top_score: null` を許容）、rewrite 完了時に `rewrite_result`
 2. M2 の SSE プロトコルドキュメントに追加イベントを追記（後方互換の明記）
-3. フロント: `route_decided` でバッジ表示。**`supplement_start`（T4 実装）を受けて補足セクションを視覚的に区切る**。その他の新イベントは受信のみ
+3. フロント: `route_decided` を受けてバッジ表示。それ以外の新イベントは受信のみ（表示なし）
 4. stub 構造検証テスト（T3）に新イベントの型・順序を追加
 
 **完了条件:**
 - [ ] 既存イベント型のペイロードに変更がないこと（stub 構造検証テストで担保）
 - [ ] 2 経路それぞれでバッジが正しく表示される
-- [ ] 補足セクションの視覚的区切りが表示される（複合質問で確認）
 - [ ] SSE プロトコルドキュメント更新済み
 
-**スコープ外:** 進捗のリッチ UI（スピナー・ノード別ステータス）→ M5 showcase の範疇。
+**スコープ外:** 進捗のリッチ UI（スピナー・ノード別ステータス表示）→ M5 showcase の範疇。補足セクション有無のバッジ表示（route ではないため。必要なら M5 で検討）。
 
 ---
 
 ## T7: 可観測性の仕上げとドキュメント確定
 
-**目的:** 運用・閾値チューニング・レイテンシ分析の基盤を整え、スペックを実態に同期させる。
+**目的:** 運用・閾値チューニングの分析基盤を整え、スペックを実態に同期させる。
 
 **成果物:**
-- Langfuse trace metadata: `route`, `rewrite_applied`, `rewrite_skipped`, `theta`, `kept_count`, `top_score`, `supplement_emitted`（スペック §7）
-- 各ノードの span 計装 + generate の TTFT 記録
-- スペック確定版（Draft → Accepted、実装との差分反映）
-- 未決事項（スペック §11）の決定値、T5 からのレイテンシ引き継ぎ事項の記録
+- Langfuse trace metadata: `route`, `rewrite_applied`, `theta`, `kept_count`, `top_score`（スペック §6）
+- 各ノードの span 計装（既存 Langfuse クライアント直呼び）
+- スペック確定版への更新（Draft → Accepted、実装との差分を反映）
+- 未決事項（スペック §10）の決定値、および T5 からの引き継ぎ事項（レイテンシ対応要否）の記録
 
 **完了条件:**
-- [ ] Langfuse で route 別のフィルタリング・レイテンシ比較ができることを確認
-- [ ] rewrite / retrieve / generate の span 所要時間と TTFT が記録されていることを確認
+- [ ] Langfuse 上で route 別のフィルタリング・レイテンシ比較ができることを確認
 - [ ] direct 経路の trace がダッシュボードで欠損扱いにならないことを確認
-- [ ] スペックの Status が Accepted に更新され、§11 が解消または持ち越し記録されている
+- [ ] スペックの Status が Accepted に更新され、§10 が解消または明示的に持ち越し記録されている
 - [ ] `make eval-all` 全通過の最終確認
 
 ---
@@ -246,8 +237,7 @@
 ## 全体の完了定義（M7 クローズ条件）
 
 - [ ] T0–T7 の全完了条件を満たす
-- [ ] `make eval-all` 通過（holdout: grounded 見逃し ≤ 1 件 / direct 誤り ≤ 3 件 / direct 捏造 0 / デリミタ 5/5 / 補足分離 5/5 / e2e 非劣化）
+- [ ] `make eval-all` 通過（holdout: grounded 見逃し ≤ 1 件 / direct 誤り ≤ 3 件 / groundedness 真の違反 0 / 補足書式 5/5 / 既存 e2e 非劣化）
 - [ ] 依存ツリーに `langgraph` のみ追加され、langchain 系が含まれない
-- [ ] LLM-as-judge が eval のどこにも使われていないこと（すべて決定的チェックまたは人手裁定）
 - [ ] checkpointer 未使用のまま State のシリアライズ可能性が保たれている（M8 への引き継ぎ条件）
 - [ ] M8 候補（clarify / HITL / LLM grader の要否）の判断材料が eval レポートとして残っている
