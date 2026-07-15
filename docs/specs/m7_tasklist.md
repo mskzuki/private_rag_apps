@@ -1,7 +1,7 @@
 # M7 タスクリスト: Adaptive Routing (rev.3)
 
 - Spec: `m7_adaptive_routing.md` (rev.3)
-- Status: In Progress（T0 完了）
+- Status: In Progress（T0-T2 完了。T2 GO判定によりT3へ進行中）
 - 実行順序: T0 → T1 → T2 →（GO/NO-GO 判定）→ T3 → T4 → T5 → T6 → T7
 - 規約: 各タスクは「完了条件をすべて満たす」まで次に進まない。スコープ外の変更を行わない。判断に迷う点はタスク内の「実装ノート」の範囲でのみ裁量を認め、それ以外はスペックに差し戻す
 
@@ -83,9 +83,9 @@
 5. holdout の結果を見て THETA を再調整しない（する場合は calibration に戻り、holdout 再使用は 1 回までとしてレポートに明記する）
 
 **完了条件:**
-- [ ] スコア分布レポートが作成され、分離度が確認できる
-- [ ] THETA 初期値が calibration のみで決定され、決定過程がレポートに記録されている
-- [ ] **GO/NO-GO 判定（holdout 上）:** grounded 見逃し ≤ 1 件 かつ direct 誤り ≤ 3 件 → GO（T3 へ）。満たさない → NO-GO（T3 以降を保留し、スペック §7.4 に従い LLM grader スペックの起票に切り替える）
+- [x] スコア分布レポートが作成され、分離度が確認できる（`backend/evals/reports/m7-score-distribution.md`）
+- [x] THETA 初期値が calibration のみで決定され、決定過程がレポートに記録されている（THETA=0.56）
+- [x] **GO/NO-GO 判定（holdout 上）:** grounded 見逃し ≤ 1 件 かつ direct 誤り ≤ 3 件 → GO（T3 へ）。満たさない → NO-GO（T3 以降を保留し、スペック §7.4 に従い LLM grader スペックの起票に切り替える）→ **GO**（grounded見逃し1/20、direct誤り3/17。両指標とも基準値ちょうどでマージンが薄い点をレポート§6に明記。コミット`618cfdb`、レビューApproved）
 
 **スコープ外:** アプリケーションコードへの変更一切。THETA の config 化（T4）。
 
