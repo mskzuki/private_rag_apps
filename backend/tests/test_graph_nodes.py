@@ -87,6 +87,27 @@ class TestRewriteNode:
             },
         ]
 
+    @patch("private_rag_apps.graph.nodes.rewrite.propagate_attributes")
+    @patch("private_rag_apps.graph.nodes.rewrite.get_stream_writer")
+    @patch("private_rag_apps.graph.nodes.rewrite.condense")
+    def test_records_rewrite_applied_as_trace_metadata(
+        self,
+        mock_condense: MagicMock,
+        mock_get_writer: MagicMock,
+        mock_propagate: MagicMock,
+    ) -> None:
+        """T7(スペック §6): rewrite_appliedをtraceレベルのLangfuse metadataとして記録する。
+        condense()自体は既に@observe(as_type="generation")済みでtrace配下の子spanに
+        自動的にネストされるため、rewriteノード自身に追加のspan計装は不要
+        （grade.pyのコメント参照）"""
+        mock_get_writer.return_value = MagicMock()
+        mock_condense.return_value = ("rewritten query", True)
+        state: GraphState = {"user_query": "q", "history": []}
+
+        rewrite(state)
+
+        mock_propagate.assert_called_once_with(metadata={"rewrite_applied": True})
+
 
 class TestGrade:
     """grade ノード: THETA によるgrounded/direct分岐(スペック rev.3 §4.3 grade)。
@@ -225,6 +246,50 @@ class TestGrade:
 
         assert [c["chunk_id"] for c in result["kept"]] == ["a"]
         assert result["route"] == "grounded"
+
+    @patch("private_rag_apps.graph.nodes.grade.propagate_attributes")
+    @patch("private_rag_apps.graph.nodes.grade.get_client")
+    @patch("private_rag_apps.graph.nodes.grade.get_stream_writer")
+    def test_records_langfuse_span_and_trace_metadata(
+        self,
+        mock_get_writer: MagicMock,
+        mock_get_client: MagicMock,
+        mock_propagate: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """T7(スペック §6): grade自身はLLM/IO呼び出しを持たない純関数のため、
+        他ノードと異なり呼び出し先に既存の@observe済み関数が無い。そのため
+        get_client().start_as_current_observation()で明示的にspanを作り、
+        propagate_attributes()でroute/theta/kept_count/top_scoreをtraceレベルの
+        metadataとして記録する(update_current_trace()はインストール済みlangfuse
+        SDKに存在しないため使わない)"""
+        mock_get_writer.return_value = MagicMock()
+        monkeypatch.setattr(settings, "routing_theta", 0.5)
+        state: GraphState = {
+            "retrieved": [
+                {"chunk_id": "a", "rerank_score": 0.9},
+                {"chunk_id": "b", "rerank_score": 0.4},
+            ]
+        }
+
+        grade(state)
+
+        mock_get_client.return_value.start_as_current_observation.assert_called_once_with(
+            name="grade", as_type="span"
+        )
+        span = mock_get_client.return_value.start_as_current_observation.return_value.__enter__.return_value
+        span.update.assert_called_once_with(
+            metadata={
+                "theta": 0.5,
+                "route": "grounded",
+                "kept_count": 1,
+                "dropped_count": 1,
+                "top_score": 0.9,
+            }
+        )
+        mock_propagate.assert_called_once_with(
+            metadata={"route": "grounded", "theta": 0.5, "kept_count": 1, "top_score": 0.9}
+        )
 
 
 @patch("private_rag_apps.graph.nodes.retrieve.get_stream_writer")
