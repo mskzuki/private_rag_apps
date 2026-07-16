@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from fastapi import FastAPI, Depends, Request, HTTPException, BackgroundTasks
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, TypedDict, cast
+from typing import List, Dict, Any, Optional, TypedDict
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 from langfuse import observe, propagate_attributes
@@ -22,7 +22,6 @@ from private_rag_apps.ingestion.concurrency import (
     start_run,
 )
 from private_rag_apps.ingestion.indexer import execute_ingestion
-from private_rag_apps.generation.generator import condense
 from private_rag_apps.graph.builder import build_graph
 from private_rag_apps.graph.state import GraphState
 from private_rag_apps.graph.state import Message as HistoryMessage
@@ -147,22 +146,17 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
             existing_conv.title = body.message[:settings.title_max_chars]
             db.commit()
 
-    # Get history for condense
+    # 会話履歴のロード（正はDB。グラフはステートレスに保つ。スペック §3.4）。
+    # rewrite ノード（condense()呼び出し）はグラフ内で実行するため、ここでは
+    # 生の user_query と history をそのままグラフに渡す（M7 T5でAGENTS.md §3の
+    # 暫定例外を解消。以前はここでグラフの外からcondense()を直接呼んでいた）
     history = db.query(Message).filter(Message.conversation_id == conversation_id).order_by(Message.created_at).all()
     history_dicts: List[HistoryMessage] = [{"role": m.role, "content": m.content} for m in history]
-    
-    # Condense（rewriteノードはT5で実装予定。T3時点ではグラフの外で従来通りcondenseし、
-    # 結果をgraphのuser_queryにそのまま渡す。retrieveノードはuser_queryをそのまま検索クエリに使う
-    # ＝ 現行の retrieve_context(db, query=search_query) と等価。M7スペックrev.3 §4.3 retrieve）
-    if existing_messages_count > 0:
-        search_query = condense(body.message, cast(List[Dict[str, str]], history_dicts))
-    else:
-        search_query = body.message
 
     graph = build_graph(db)
     initial_state: GraphState = {
         "conversation_id": conversation_id,
-        "user_query": search_query,
+        "user_query": body.message,
         "history": history_dicts,
     }
 
