@@ -2,8 +2,10 @@
 （docs/specs/m7_adaptive_routing.md rev.3 §4.3 retrieve）。
 
 M7 では retrieval 内部（hybrid search → RRF → rerank）に一切変更を加えない。
-T3 時点では rewrite ノードが未実装（T5）のため、検索クエリには State の user_query を
-そのまま使う（rewrite が実装されるまでは search_query == user_query）。
+T5 で rewrite ノードがグラフに追加され、retrieve より先に実行されるようになったため、
+検索クエリには rewrite が設定した state["search_query"] をそのまま使う。
+state["search_query"] が未設定（rewrite を経由せずこのノードを単独で呼ぶ場合。
+単体テスト等）の場合は user_query にフォールバックする。
 
 db セッションはノード関数のクロージャで保持し、State には含めない
 （DB コネクションを State に入れない。スペック §3.4）。
@@ -30,7 +32,7 @@ def make_retrieve_node(db: Session) -> RetrieveNode:
     """db セッションを束縛した retrieve ノード関数を生成する（1 リクエストごとに呼ぶ）"""
 
     def retrieve(state: GraphState) -> dict[str, Any]:
-        search_query = state["user_query"]
+        search_query = state.get("search_query", state["user_query"])
         retrieved = retrieve_context(db, query=search_query)
         return {"search_query": search_query, "retrieved": retrieved}
 

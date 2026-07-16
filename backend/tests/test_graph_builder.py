@@ -99,6 +99,39 @@ def test_build_graph_routes_to_direct_when_no_chunk_meets_theta(
     ]
 
 
+@patch("private_rag_apps.graph.nodes.rewrite.condense")
+@patch("private_rag_apps.graph.nodes.generate.generate_answer_stream")
+@patch("private_rag_apps.graph.nodes.retrieve.retrieve_context")
+def test_build_graph_rewrite_feeds_search_query_into_retrieve(
+    mock_retrieve_context: MagicMock, mock_generate_stream: MagicMock, mock_condense: MagicMock
+) -> None:
+    """T5: rewrite ノードが condense() で書き換えたクエリが、そのまま retrieve ノードの
+    検索クエリとして使われること（rewrite → retrieve のデータフロー結合の検証）"""
+    mock_condense.return_value = ("RRFの重み付けはどう決まるか", True)
+    mock_retrieve_context.return_value = [{"chunk_id": "c1"}]
+    mock_generate_stream.return_value = iter([{"event": "citations", "data": []}])
+
+    db = MagicMock()
+    graph = build_graph(db)
+    history = [
+        {"role": "user", "content": "RRFの議論"},
+        {"role": "assistant", "content": "RRFはランキング融合手法です"},
+    ]
+    asyncio.run(
+        _run_graph(
+            graph,
+            {
+                "conversation_id": "c",
+                "user_query": "それの重み付けは？",
+                "history": history,
+            },
+        )
+    )
+
+    mock_condense.assert_called_once_with("それの重み付けは？", history)
+    mock_retrieve_context.assert_called_once_with(db, query="RRFの重み付けはどう決まるか")
+
+
 @patch("private_rag_apps.graph.nodes.generate.generate_direct_answer_stream")
 @patch("private_rag_apps.graph.nodes.retrieve.retrieve_context")
 def test_build_graph_routes_to_direct_when_retrieved_is_empty(

@@ -6,7 +6,55 @@ from private_rag_apps.core.config import settings
 from private_rag_apps.graph.nodes.generate import generate
 from private_rag_apps.graph.nodes.grade import grade
 from private_rag_apps.graph.nodes.retrieve import make_retrieve_node
+from private_rag_apps.graph.nodes.rewrite import rewrite
 from private_rag_apps.graph.state import GraphState
+
+
+class TestRewriteNode:
+    """rewrite ノード: 既存 generation.condense() を呼ぶだけの薄いラッパー
+    （新規ロジックを持たない。スペック rev.3 §4.3 rewrite、§3.3）"""
+
+    @patch("private_rag_apps.graph.nodes.rewrite.condense")
+    def test_calls_condense_with_user_query_and_history(self, mock_condense: MagicMock) -> None:
+        mock_condense.return_value = ("rewritten query", True)
+        state: GraphState = {
+            "user_query": "それの重み付けは？",
+            "history": [
+                {"role": "user", "content": "RRFの議論"},
+                {"role": "assistant", "content": "RRFはランキング融合手法です"},
+            ],
+        }
+
+        result = rewrite(state)
+
+        mock_condense.assert_called_once_with(
+            "それの重み付けは？",
+            [
+                {"role": "user", "content": "RRFの議論"},
+                {"role": "assistant", "content": "RRFはランキング融合手法です"},
+            ],
+        )
+        assert result == {"search_query": "rewritten query", "rewrite_applied": True}
+
+    @patch("private_rag_apps.graph.nodes.rewrite.condense")
+    def test_missing_history_defaults_to_empty_list(self, mock_condense: MagicMock) -> None:
+        """history未設定時は空リストを渡す(防御的デフォルト。実際のグラフではAPIハンドラが
+        必ずhistoryを組み立てるため通常は発生しない)"""
+        mock_condense.return_value = ("q", False)
+        state: GraphState = {"user_query": "q"}
+
+        rewrite(state)
+
+        mock_condense.assert_called_once_with("q", [])
+
+    def test_empty_history_passes_through_without_llm_call(self) -> None:
+        """historyが空の場合、condense()自身が早期returnするためLLM呼び出しは発生しない
+        (mock不要で実際のcondense()を呼んでも完走することの確認。フォールバック不要系)"""
+        state: GraphState = {"user_query": "raw question", "history": []}
+
+        result = rewrite(state)
+
+        assert result == {"search_query": "raw question", "rewrite_applied": False}
 
 
 class TestGrade:
@@ -101,9 +149,11 @@ class TestGrade:
 
 
 @patch("private_rag_apps.graph.nodes.retrieve.retrieve_context")
-def test_retrieve_node_uses_user_query_as_search_query(mock_retrieve_context: MagicMock) -> None:
-    """T3 時点では rewrite ノードが無いため、search_query には user_query をそのまま使う
-    （タスク T3 補足コンテキスト#1、スペック rev.3 §4.3 retrieve）"""
+def test_retrieve_node_falls_back_to_user_query_when_search_query_missing(
+    mock_retrieve_context: MagicMock,
+) -> None:
+    """search_query が未設定（rewrite ノードを経由せずこのノードを単独で呼ぶ場合）は
+    user_query にフォールバックする（スペック rev.3 §4.3 retrieve）"""
     mock_retrieve_context.return_value = [{"chunk_id": "c1"}]
     mock_db = MagicMock()
 
@@ -112,6 +162,32 @@ def test_retrieve_node_uses_user_query_as_search_query(mock_retrieve_context: Ma
 
     mock_retrieve_context.assert_called_once_with(mock_db, query="raw question")
     assert result == {"search_query": "raw question", "retrieved": [{"chunk_id": "c1"}]}
+
+
+@patch("private_rag_apps.graph.nodes.retrieve.retrieve_context")
+def test_retrieve_node_uses_search_query_set_by_rewrite(
+    mock_retrieve_context: MagicMock,
+) -> None:
+    """search_query が既に設定されている（rewrite ノードがグラフ内で先行実行された）場合は
+    それを検索クエリとして使い、user_query では上書きしない（T5: rewrite→retrieve 連携）"""
+    mock_retrieve_context.return_value = [{"chunk_id": "c1"}]
+    mock_db = MagicMock()
+
+    node = make_retrieve_node(mock_db)
+    result = node(
+        {
+            "user_query": "それの重み付けは？",
+            "search_query": "RRFの重み付けはどう決まるか",
+            "conversation_id": "c",
+            "history": [],
+        }
+    )
+
+    mock_retrieve_context.assert_called_once_with(mock_db, query="RRFの重み付けはどう決まるか")
+    assert result == {
+        "search_query": "RRFの重み付けはどう決まるか",
+        "retrieved": [{"chunk_id": "c1"}],
+    }
 
 
 @patch("private_rag_apps.graph.nodes.retrieve.retrieve_context")

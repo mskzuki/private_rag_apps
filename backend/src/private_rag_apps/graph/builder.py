@@ -1,8 +1,9 @@
 """グラフ組み立て（docs/specs/m7_adaptive_routing.md rev.3 §4.1）。
 
-T4 時点では retrieve → grade → (conditional edge) → generate のグラフとする
-（rewrite ノードは T5 で追加。それまでは retrieve が state["user_query"] を
-そのまま検索クエリとして使う pass-through）。
+rewrite → retrieve → grade → (conditional edge) → generate のグラフとする
+（T5 で rewrite ノードを追加。会話履歴を踏まえた検索クエリ書き換えを retrieve より
+先に実行する。rewrite は既存 generation.condense() を呼ぶだけの薄いラッパーで、
+history が空の場合は LLM を呼ばず user_query をそのまま search_query として通す）。
 
 grade の後段は conditional edge で分岐するが、grounded/direct いずれも同じ
 "generate" ノードに合流する（generate は1ノードでprompt切り替えのみ行う。
@@ -25,6 +26,7 @@ from sqlalchemy.orm import Session
 from private_rag_apps.graph.nodes.generate import generate
 from private_rag_apps.graph.nodes.grade import grade
 from private_rag_apps.graph.nodes.retrieve import make_retrieve_node
+from private_rag_apps.graph.nodes.rewrite import rewrite
 from private_rag_apps.graph.state import GraphState
 
 
@@ -35,12 +37,14 @@ def _route_after_grade(state: GraphState) -> Literal["grounded", "direct"]:
 
 
 def build_graph(db: Session) -> CompiledStateGraph:
-    """retrieve → grade → (conditional) → generate のグラフをコンパイルして返す"""
+    """rewrite → retrieve → grade → (conditional) → generate のグラフをコンパイルして返す"""
     graph = StateGraph(GraphState)
+    graph.add_node("rewrite", rewrite)
     graph.add_node("retrieve", make_retrieve_node(db))
     graph.add_node("grade", grade)
     graph.add_node("generate", generate)
-    graph.add_edge(START, "retrieve")
+    graph.add_edge(START, "rewrite")
+    graph.add_edge("rewrite", "retrieve")
     graph.add_edge("retrieve", "grade")
     graph.add_conditional_edges(
         "grade",
