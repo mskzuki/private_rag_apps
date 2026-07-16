@@ -40,7 +40,9 @@ export const createChatAdapter = (
       const decoder = new TextDecoder("utf-8");
       let textBuffer = "";
       let accumulatedText = "";
-      const metadata: { custom: { citations: unknown[] } } = {
+      const metadata: {
+        custom: { citations: unknown[]; route?: "grounded" | "direct" };
+      } = {
         custom: { citations: [] },
       };
       // Persists across reader.read() calls: an `event:` line and its `data:`
@@ -91,12 +93,29 @@ export const createChatAdapter = (
               } catch (e) {
                 console.error("Failed to parse citations", e);
               }
+            } else if (currentEvent === "route_decided") {
+              // M7 T6 (docs/specs/m7_adaptive_routing.md §5.2): grade完了時に届く
+              // route(grounded/direct)をmetadataへ格納し、RouteBadgeで表示する
+              try {
+                const parsed = JSON.parse(dataStr);
+                if (parsed.route === "grounded" || parsed.route === "direct") {
+                  metadata.custom.route = parsed.route;
+                  yield {
+                    content: [{ type: "text", text: accumulatedText }],
+                    metadata: metadata,
+                  };
+                }
+              } catch (e) {
+                console.error("Failed to parse route_decided", e);
+              }
             } else if (currentEvent === "error") {
               throw new Error(`Server returned error: ${dataStr}`);
             } else if (currentEvent === "done") {
               // End of stream, could extract conversation_id if we want
               // but we rely on RemoteThreadListAdapter to manage that
             }
+            // node_start / rewrite_result はT6スコープでは表示しない(受信のみ)。
+            // 上記のif/elifに一致しない未知イベントもここでdefault-ignoreされる
           }
         }
       }
