@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     )
     langfuse_public_key: str = ""  # Langfuse 公開鍵（任意。未設定なら計装は no-op）
     langfuse_secret_key: str = ""  # Langfuse 秘密鍵（任意。未設定なら計装は no-op）
-    langfuse_host: str = "https://cloud.langfuse.com"  # Langfuse 送信先ホスト
+    langfuse_host: str = ""  # Langfuse 送信先ホスト
     database_url: str = "postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_dev"  # PostgreSQL(pgvector+pg_bigm)接続文字列。開発/デモ用DB（テストは rag_test を使う。docs/architecture.md §9）
     corpus_dir: str = "seed/corpus"  # 取り込み対象コーパス（Markdown/テキスト）のディレクトリ
     llm_model: str = ""  # 回答生成に使う OpenAI モデル
@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     eval_ef_search: int = 100  # 大きめの値
     eval_judge_samples: int = 1
     eval_dataset_path: str = "evals/dataset/m3_golden.jsonl"
+    eval_retrieval_cache_path: str = "evals/cache/m3_retrieval.json"
 
     # Routing Settings (M7 adaptive routing)
     routing_theta: float = 0.56  # grade の grounded/direct 分岐閾値(THETA)。rerank_score >= routing_theta のchunkのみkeepする。ADR 0001でキャリブレーション決定した値をデフォルトに採用（docs/adr/0001_m7_theta_threshold.md）

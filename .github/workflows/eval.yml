@@ -62,7 +62,7 @@ jobs:
           VOYAGE_API_KEY: ${{ secrets.VOYAGE_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          uv run python -m private_rag_apps.evals
+          uv run python -m private_rag_apps.evals --no-cache
           
       - name: Post PR Comment
         if: always()

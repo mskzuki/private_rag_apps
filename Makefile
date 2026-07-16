@@ -1,4 +1,4 @@
-.PHONY: setup migrate demo ingest test lint fmt eval eval-routing eval-all api web openapi
+.PHONY: setup migrate demo ingest test lint fmt eval eval-no-cache eval-routing eval-all api web openapi
 
 api:
 	docker compose up --build api
@@ -40,7 +40,11 @@ fmt:
 
 # 評価データセットでEvalハーネスを実行。合否ではなくスコア回帰を監視する（テストとは別物）
 eval:
-	cd backend && uv run python -m private_rag_apps.evals
+	cd backend && uv run python -m private_rag_apps.evals $(ARGS)
+
+# Voyage APIを呼んで評価用の検索結果キャッシュを更新する。
+eval-no-cache:
+	cd backend && uv run python -m private_rag_apps.evals --no-cache
 
 # M7: routing evalデータセットでrewrite→retrieve→gradeを評価する（generateは実行しない。高速）
 eval-routing:

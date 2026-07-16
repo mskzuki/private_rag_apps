@@ -1,3 +1,4 @@
+import argparse
 import json
 import hashlib
 import sys
@@ -12,6 +13,12 @@ from private_rag_apps.retrieval.searcher import retrieve_context
 from private_rag_apps.generation.generator import generate_answer_stream, condense
 from private_rag_apps.evals.schema import load_dataset, validate_paths
 from private_rag_apps.evals.metrics import evaluate_retrieval
+from private_rag_apps.evals.retrieval_cache import (
+    file_sha256,
+    load_retrieval_cache,
+    read_cached_rankings,
+    write_retrieval_cache,
+)
 from private_rag_apps.evals.judge import (
     evaluate_faithfulness,
     evaluate_answer_relevance,
@@ -66,7 +73,24 @@ def get_answer(query: str, context: List[Dict[str, Any]]) -> str:
     return full_text
 
 
-def run_eval() -> None:
+def _retrieval_cache_provenance(dataset_path: Path, corpus_hash: str) -> Dict[str, Any]:
+    """検索結果を安全に再生するための有効性判定情報を構築する。"""
+    return {
+        "dataset_sha256": file_sha256(dataset_path),
+        "corpus_hash": corpus_hash,
+        "retrieval_params": {
+            "eval_top_k": settings.eval_top_k,
+            "eval_ef_search": settings.eval_ef_search,
+            "candidate_k": settings.candidate_k,
+            "rrf_k": settings.rrf_k,
+            "fuse_k": settings.fuse_k,
+            "rerank_top_k": settings.rerank_top_k,
+        },
+        "models": {"embed": settings.embed_model, "rerank": "rerank-2.5"},
+    }
+
+
+def run_eval(*, no_cache: bool = False) -> None:
     dataset_path = Path(settings.eval_dataset_path)
     if not dataset_path.exists():
         print(f"Dataset not found at {dataset_path}")
@@ -74,6 +98,15 @@ def run_eval() -> None:
 
     dataset = load_dataset(dataset_path)
     validate_paths(dataset, settings.corpus_dir)
+    cache_path = Path(settings.eval_retrieval_cache_path)
+    cache_provenance = _retrieval_cache_provenance(dataset_path, get_corpus_hash())
+    cached_entries: Dict[str, Any] = {}
+    refreshed_entries: Dict[str, Dict[str, Any]] = {}
+    if no_cache:
+        print(f"Refreshing retrieval cache at {cache_path} (Voyage API will be called).")
+    else:
+        cached_entries = load_retrieval_cache(cache_path, cache_provenance)
+        print(f"Replaying retrieval cache at {cache_path} (Voyage API will not be called).")
 
     db = SessionLocal()
     try:
@@ -95,9 +128,10 @@ def run_eval() -> None:
         for item in dataset:
             print(f"Evaluating {item.id}...")
 
-            # マルチターンの場合はクエリを要約する
+            # キャッシュ再生時は、保存済みの検索結果をそのまま使う。
+            # これによりマルチターンの rewrite も再実行せず、検索入力の再現性を保つ。
             query_to_search = item.question
-            if item.turns:
+            if item.turns and no_cache:
                 history_messages = []
                 for i, text in enumerate(item.turns):
                     role = "user" if i % 2 == 0 else "assistant"
@@ -108,16 +142,18 @@ def run_eval() -> None:
                 query_to_search, _ = condense(item.question, history_messages)
                 print(f"  Condensed query: {query_to_search}")
 
-            # 1. 検索
-            # M3のevalではhybrid_rerankを強制する
-            # M7 T4: Voyage無支払い枠のレート制限予防のペーシング(ADR 0003)
-            _pace_voyage_call()
-            ret_result = cast(
-                Dict[str, List[Dict[str, Any]]],
-                retrieve_context(
-                    db, query=query_to_search, strategy="hybrid_rerank", diagnostic_mode=True
-                ),
-            )
+            # 1. 検索。既定ではキャッシュを再生し、--no-cache 時だけ Voyage を呼ぶ。
+            if no_cache:
+                _pace_voyage_call()
+                ret_result = cast(
+                    Dict[str, List[Dict[str, Any]]],
+                    retrieve_context(
+                        db, query=query_to_search, strategy="hybrid_rerank", diagnostic_mode=True
+                    ),
+                )
+                refreshed_entries[item.id] = ret_result
+            else:
+                ret_result = read_cached_rankings(cached_entries, item.id)
             fused_chunks = ret_result["fused_ranking"]
             reranked_chunks = ret_result["reranked_ranking"]
 
@@ -213,6 +249,10 @@ def run_eval() -> None:
         }
 
         report = {"provenance": provenance, "aggregate": agg, "results": results}
+
+        if no_cache:
+            write_retrieval_cache(cache_path, cache_provenance, refreshed_entries)
+            print(f"Updated retrieval cache at {cache_path}")
 
         # baselineとの比較
         baseline_path = Path("evals/baselines/current.json")
@@ -318,4 +358,11 @@ def run_eval() -> None:
 
 
 if __name__ == "__main__":
-    run_eval()
+    parser = argparse.ArgumentParser(description="Run the M3 evaluation harness.")
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Call Voyage and refresh the retrieval cache instead of replaying it.",
+    )
+    args = parser.parse_args()
+    run_eval(no_cache=args.no_cache)

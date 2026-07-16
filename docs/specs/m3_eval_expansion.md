@@ -181,7 +181,9 @@ flowchart TD
     REP -. 任意 .-> LF[Langfuse Datasets/Experiments へ実験記録]
 ```
 
-- 実行は **CLI（`make eval`）でローカル完結**。外部 API（embed/rerank/judge/gen）は実呼び出し（テストとは別物。AGENTS.md §8）。
+- 実行は **CLI（`make eval`）でローカル完結**。Voyage の低いレート制限下でも反復できるよう、検索結果（fused / reranked のチャンク列）を評価専用キャッシュとして Git 管理する。**既定の `make eval` はこのキャッシュを再生し、Voyage の embed / rerank を呼ばない**。`make eval ARGS="--no-cache"`（または `make eval-no-cache`）はキャッシュを使わず全問を再取得し、成功時にキャッシュを更新する。キャッシュが無い・provenance が不一致の場合、既定実行は API にフォールバックせず `--no-cache` を明示的に要求する。更新したキャッシュはレビュー対象の差分としてコミットする。
+- CI はクリーンな検索品質の正式評価であるため、キャッシュを再生せず `--no-cache` で実行する。
+- キャッシュの有効性は dataset 内容ハッシュ、corpus ハッシュ、embed / rerank モデル、評価用検索パラメータで判定する。これら、または検索・チャンキング・埋め込み・リランクの実装を変更した場合は、**必ず `--no-cache` で再取得して検索指標を評価する**。キャッシュ再生は生成・judge・レポート処理を高速に反復するためのものであり、検索回帰の正式判定には使わない。
 
 ### 6.2 出力（レポートと provenance）
 
@@ -274,6 +276,7 @@ CI ジョブは本番と同じクリーン経路をたどる:
 | `EVAL_EF_SEARCH` | 評価時の `hnsw.ef_search`（全探索寄りの大きめ値。§4.2/§7.4） | 大きめ（実測後確定） |
 | `EVAL_JUDGE_SAMPLES` | judge の反復回数（平均） | 1 |
 | `EVAL_DATASET_PATH` | データセット JSONL のパス | `evals/dataset/` |
+| `EVAL_RETRIEVAL_CACHE_PATH` | `make eval` が既定で再生する検索結果キャッシュ | `evals/cache/m3_retrieval.json` |
 | `EVAL_TOLERANCE_*` | メトリクス別の回帰許容 | 初回計測後に確定 |
 
 ---
@@ -300,6 +303,7 @@ CI ジョブは本番と同じクリーン経路をたどる:
 
 **ハーネス・レポート（§9 / §12）**
 - [x] `make eval` がデータセット→検索→指標→生成→判定→レポートを通しで実行する — `evals/__main__.py:42-243` `run_eval()`
+- [x] `make eval` は検索結果キャッシュを既定で再生し、`--no-cache` のみ Voyage を呼んで成功時にキャッシュを更新する。キャッシュの provenance 不一致は明示エラーとする（§6.1）— `evals/retrieval_cache.py` と `evals/__main__.py`。`tests/evals/test_retrieval_cache.py` で API 非呼出の再生と provenance 不一致を検証
 - [x] レポートに provenance（各モデル名・検索パラメータ・corpus ハッシュ・dataset version）が記録される — `__main__.py:136-155`（embed/rerank フィールドを含め本 M5 セッションで追加済み。ただし `embed_dims`/`rerank` はハードコード値であり `settings` からの動的取得ではない旨がコード中コメントに明記）
 - [x] committed baseline との比較で回帰を検出できる — `evals/baselines/current.json` が存在し、`__main__.py:163-188` で比較ロジックが実装されている。※ 現状の `current.json` の数値は丸い値（0.9/0.95等）で実 `make eval` 実行由来か未確認（実行は Docker 起動待ち）
 - [x] M1 前後を含むスコア推移の **Eval レポートが公開**されている（§12）— **M5追記（2026-07-13）**: 実 `make eval` 実行結果を一次ソースに `docs/eval_report.md` を作成・公開した（詳細は `m3_tasklist.md` の同項目参照）
@@ -365,5 +369,6 @@ AGENTS.md §12 に従い、**本スペック → `docs/specs/m3_tasklist.md` →
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.3 | 2026-07-16 | Voyage の低レート制限に対応するため、`make eval` の検索結果キャッシュ再生を既定化。`--no-cache` による明示的な全件再取得・キャッシュ更新、有効性判定と検索変更時の再取得運用を §6.1 / §10 / §11 に追加 |
 | v0.2 | 2026-07-07 | セルフレビュー反映: (1) **`@k` を取得チャンクリスト基準に統一**し、doc-hit / doc-dedup / IDCG 基準を厳密化（§4.1、受け入れ・テストに波及）。(2) **評価時は被評価側の生成も temp=0・max_tokens 固定**（生成揺れの二重計上を防止。§5.2/§6.2/§7.4/§10）。(3) リランク前/後の指標のため **`retrieval` に評価/診断モード**（融合前/後の両ランキング返却）を明記し依存方向を保持（§4.2/§13）。(4) **評価時 `ef_search` を全探索寄りに固定**して索引再構築由来の recall 揺れを抑制（§4.2/§7.4）。(5) negative は「弱いコンテキストでの生成 abstain」判定であることを明確化（§5.2）。(6) `turns` 任意フィールド・seed 変更時の path レビュー・設定キー追加などの minor 修正 |
 | v0.1 | 2026-07-07 | 初版。M3（Eval 拡充）のフィーチャースペック。データセット 30〜50 問・**path レベル正解（chunk_id 非依存）**、検索指標（Recall@5/10・nDCG@10・MRR、リランク前/後・`EVAL_TOP_K` 分離）、生成指標（Faithfulness/Answer Relevance の LLM-as-judge、判定モデル固定・prompts 化）、ハーネス/レポート（provenance）、committed baseline による回帰検出、CI 連携（再現経路・検索ハード/生成ソフトのゲート・PR 自動記載）、Langfuse Datasets 任意連携、マルチターン小規模サニティを定義。上位ドキュメント反映点を §13 に明記 |

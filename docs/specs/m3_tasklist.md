@@ -1,11 +1,13 @@
 # M3 タスクリスト (m3_tasklist.md)
 
 > 配置先: `docs/specs/m3_tasklist.md`
-> 対応スペック: `docs/specs/m3_eval_expansion.md`（v0.2、以下「スペック」）
+> 対応スペック: `docs/specs/m3_eval_expansion.md`（v0.3、以下「スペック」）
 > 進め方: 上から順に実施する。各タスクは対応するスペックの節番号を付記。
 > 指標の計算ロジックは**決定的ユニットテストを先に**書く（TDD 寄り）。外部 API を叩く箇所はテストではモック/記録再生（AGENTS.md §8）。
 
 > **M5 監査メモ（2026-07-13）**: 本ファイルのチェックは実装済みコードとの一括照合（bulk verification）で行った。`docs/specs/m3_eval_expansion.md` §11 受け入れ条件の検証結果（file:line 単位の根拠）をこのタスクリストの該当項目に敷衍する形でチェックを付けている。テスト未整備・設定はあるが未配線・`docs/eval_report.md` 未生成などが判明した項目は未チェックのまま `genuine gap` として明記した。
+
+> **2026-07-16 追加タスク**: Voyage 無支払い枠（3 RPM）でも日常的な Eval 反復を可能にするため、M3 スペック v0.3 の検索結果キャッシュを実装する。検索品質を変更する作業では `--no-cache` による再取得を必須とする。
 
 ---
 
@@ -69,6 +71,8 @@
 ## Phase 4 — ハーネス統合とレポート出力（スペック §6）
 
 - [x] `make eval` を拡張し、データセット→検索→指標→生成→judge→集計→レポートを通しで実行 — `evals/__main__.py:42-243` `run_eval()`
+- [x] 検索結果キャッシュを実装: `make eval` は既定で再生、`make eval ARGS="--no-cache"` / `make eval-no-cache` は Voyage を呼んで成功時に更新。dataset・corpus・モデル・検索設定の provenance を検証し、不一致時は明示エラー（§6.1）— `evals/retrieval_cache.py` / `evals/__main__.py` / `core/config.py`
+- [x] ユニットテスト: キャッシュの有効性判定、キャッシュ再生時に retrieval を呼ばないこと、`--no-cache` 時の更新（外部 API はモック）— `tests/evals/test_retrieval_cache.py`
 - [ ] **被評価側の生成を eval 時 temp=0・max_tokens 固定**で走らせる（`EVAL_GEN_TEMPERATURE` / `EVAL_GEN_MAX_TOKENS`。§5.2/§7.4）— **genuine gap**。設定は `core/config.py` にあるが `evals/__main__.py:28-34` の `get_answer()` のコメントで明言されている通り `generate_answer_stream()` に反映されておらず未使用
 - [x] 機械可読レポート `evals/reports/<timestamp>.json`（各問スコア + 集計 + メタ）を出力 — `evals/__main__.py:225-233`
 - [ ] 人間可読サマリ Markdown（集計表・**リランク前/後比較**・negative 成否）を出力 — 集計表とリランク前/後比較は `__main__.py:191-212` の Markdown に含まれるが、**negative ケースの成否を個別に示す節は無い**（`results` 配列には残るが Markdown サマリには反映されない）
