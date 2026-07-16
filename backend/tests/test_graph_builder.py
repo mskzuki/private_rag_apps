@@ -1,0 +1,170 @@
+import asyncio
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from private_rag_apps.core.config import settings
+from private_rag_apps.graph.builder import build_graph
+
+
+async def _run_graph(graph: object, initial_state: dict[str, object]) -> list[dict[str, object]]:
+    events = []
+    async for event in graph.astream(initial_state, stream_mode="custom"):  # type: ignore[attr-defined]
+        events.append(event)
+    return events
+
+
+@patch("private_rag_apps.graph.nodes.generate.generate_answer_stream")
+@patch("private_rag_apps.graph.nodes.retrieve.retrieve_context")
+def test_build_graph_wires_retrieve_grade_generate_grounded_route(
+    mock_retrieve_context: MagicMock, mock_generate_stream: MagicMock
+) -> None:
+    """rewrite → retrieve → grade → generate のグラフが正しい順序で実行され、
+    各ノードが get_stream_writer() に渡したイベント（T6: node_start/route_decided/
+    rewrite_result含む。スペック §5.2）が graph.astream(stream_mode="custom") で
+    そのまま観測できること（スペック §5.1）。
+    rerank_score が無いchunk(既存retrieve_contextモックの形)はgrade側で
+    kept扱いになるため grounded 経路になる(graph/nodes/grade.pyの安全側デフォルト)"""
+    mock_retrieve_context.return_value = [{"chunk_id": "c1", "title": "T1", "path": "p.md"}]
+    mock_generate_stream.return_value = iter(
+        [
+            {"event": "citations", "data": [{"n": 1, "title": "T1"}]},
+            {"event": "token", "data": "Hello"},
+            {"event": "token", "data": " World"},
+        ]
+    )
+
+    db = MagicMock()
+    graph = build_graph(db)
+
+    events = asyncio.run(
+        _run_graph(graph, {"conversation_id": "c", "user_query": "raw question", "history": []})
+    )
+
+    # retrieve ノードが user_query をそのまま検索クエリとして使ったこと
+    mock_retrieve_context.assert_called_once_with(db, query="raw question")
+    # generate ノードは grade を通過した kept(この場合はretrieved全件)を
+    # context_chunks として受け取ること
+    mock_generate_stream.assert_called_once_with(
+        "raw question", [{"chunk_id": "c1", "title": "T1", "path": "p.md"}]
+    )
+
+    assert events == [
+        {"event": "node_start", "data": {"node": "rewrite"}},
+        {"event": "rewrite_result", "data": {"applied": False, "query": "raw question"}},
+        {"event": "node_start", "data": {"node": "retrieve"}},
+        {"event": "node_start", "data": {"node": "grade"}},
+        {
+            "event": "route_decided",
+            "data": {"route": "grounded", "kept": 1, "dropped": 0, "top_score": None},
+        },
+        {"event": "node_start", "data": {"node": "generate"}},
+        {"event": "citations", "data": [{"n": 1, "title": "T1"}]},
+        {"event": "token", "data": "Hello"},
+        {"event": "token", "data": " World"},
+    ]
+
+
+@patch("private_rag_apps.graph.nodes.generate.generate_answer_stream")
+@patch("private_rag_apps.graph.nodes.retrieve.retrieve_context")
+def test_build_graph_grade_drops_low_score_chunks_before_generate(
+    mock_retrieve_context: MagicMock, mock_generate_stream: MagicMock
+) -> None:
+    """THETA未満のchunkはgradeでkeptから除外され、generateにはkeptのみが渡ること"""
+    mock_retrieve_context.return_value = [
+        {"chunk_id": "high", "rerank_score": 0.9},
+        {"chunk_id": "low", "rerank_score": 0.1},
+    ]
+    mock_generate_stream.return_value = iter([{"event": "citations", "data": []}])
+
+    db = MagicMock()
+    graph = build_graph(db)
+    asyncio.run(_run_graph(graph, {"conversation_id": "c", "user_query": "q", "history": []}))
+
+    mock_generate_stream.assert_called_once_with("q", [{"chunk_id": "high", "rerank_score": 0.9}])
+
+
+@patch("private_rag_apps.graph.nodes.generate.generate_direct_answer_stream")
+@patch("private_rag_apps.graph.nodes.retrieve.retrieve_context")
+def test_build_graph_routes_to_direct_when_no_chunk_meets_theta(
+    mock_retrieve_context: MagicMock, mock_generate_direct_stream: MagicMock
+) -> None:
+    """全chunkがTHETA未満(またはretrievedが空)の場合、conditional edgeでdirect経路に入り、
+    generate_direct_answer_stream が query のみで呼ばれること(contextは渡さない)"""
+    mock_retrieve_context.return_value = [{"chunk_id": "c1", "rerank_score": 0.1}]
+    mock_generate_direct_stream.return_value = iter(
+        [{"event": "citations", "data": []}, {"event": "token", "data": "general answer"}]
+    )
+
+    db = MagicMock()
+    graph = build_graph(db)
+    events = asyncio.run(
+        _run_graph(graph, {"conversation_id": "c", "user_query": "general question", "history": []})
+    )
+
+    mock_generate_direct_stream.assert_called_once_with("general question")
+    assert events == [
+        {"event": "node_start", "data": {"node": "rewrite"}},
+        {"event": "rewrite_result", "data": {"applied": False, "query": "general question"}},
+        {"event": "node_start", "data": {"node": "retrieve"}},
+        {"event": "node_start", "data": {"node": "grade"}},
+        {
+            "event": "route_decided",
+            "data": {"route": "direct", "kept": 0, "dropped": 1, "top_score": 0.1},
+        },
+        {"event": "node_start", "data": {"node": "generate"}},
+        {"event": "citations", "data": []},
+        {"event": "token", "data": "general answer"},
+    ]
+
+
+@patch("private_rag_apps.graph.nodes.rewrite.condense")
+@patch("private_rag_apps.graph.nodes.generate.generate_answer_stream")
+@patch("private_rag_apps.graph.nodes.retrieve.retrieve_context")
+def test_build_graph_rewrite_feeds_search_query_into_retrieve(
+    mock_retrieve_context: MagicMock, mock_generate_stream: MagicMock, mock_condense: MagicMock
+) -> None:
+    """T5: rewrite ノードが condense() で書き換えたクエリが、そのまま retrieve ノードの
+    検索クエリとして使われること（rewrite → retrieve のデータフロー結合の検証）"""
+    mock_condense.return_value = ("RRFの重み付けはどう決まるか", True)
+    mock_retrieve_context.return_value = [{"chunk_id": "c1"}]
+    mock_generate_stream.return_value = iter([{"event": "citations", "data": []}])
+
+    db = MagicMock()
+    graph = build_graph(db)
+    history = [
+        {"role": "user", "content": "RRFの議論"},
+        {"role": "assistant", "content": "RRFはランキング融合手法です"},
+    ]
+    asyncio.run(
+        _run_graph(
+            graph,
+            {
+                "conversation_id": "c",
+                "user_query": "それの重み付けは？",
+                "history": history,
+            },
+        )
+    )
+
+    mock_condense.assert_called_once_with("それの重み付けは？", history)
+    mock_retrieve_context.assert_called_once_with(db, query="RRFの重み付けはどう決まるか")
+
+
+@patch("private_rag_apps.graph.nodes.generate.generate_direct_answer_stream")
+@patch("private_rag_apps.graph.nodes.retrieve.retrieve_context")
+def test_build_graph_routes_to_direct_when_retrieved_is_empty(
+    mock_retrieve_context: MagicMock,
+    mock_generate_direct_stream: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """検索結果が0件の場合もdirect経路になること(スペック §2 direct: kept==0の場合)"""
+    monkeypatch.setattr(settings, "routing_theta", 0.56)
+    mock_retrieve_context.return_value = []
+    mock_generate_direct_stream.return_value = iter([{"event": "citations", "data": []}])
+
+    db = MagicMock()
+    graph = build_graph(db)
+    asyncio.run(_run_graph(graph, {"conversation_id": "c", "user_query": "q", "history": []}))
+
+    mock_generate_direct_stream.assert_called_once_with("q")

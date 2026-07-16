@@ -3,15 +3,20 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 # APIキー、LLMモデル、Embedモデルは.envから読み込み
 class Settings(BaseSettings):
     # 基本接続情報
     openai_api_key: str = ""  # OpenAI API キー（generation・evals で使用）
-    llm_provider: Literal["openai", "ollama"] = "openai"  # 生成に使うLLMプロバイダ（condense/generate_answer_streamのみ対象。judgeは対象外）
+    llm_provider: Literal["openai", "ollama"] = (
+        "openai"  # 生成に使うLLMプロバイダ（condense/generate_answer_streamのみ対象。judgeは対象外）
+    )
     ollama_base_url: str = "http://localhost:11434/v1"  # Ollama の OpenAI互換エンドポイント（/v1/responses対応。v0.13.3以降が前提）
     ollama_api_key: str = "ollama"  # Ollamaはキー不要だがopenai SDKがダミー値を要求するため固定値
     voyage_api_key: str = ""  # Voyage AI API キー（埋め込み・リランクで使用）
-    voyage_max_retries: int = 5  # Voyage呼び出し失敗時の再試行回数（SDK組み込みのexponential backoff。レート制限対策）
+    voyage_max_retries: int = (
+        5  # Voyage呼び出し失敗時の再試行回数（SDK組み込みのexponential backoff。レート制限対策）
+    )
     langfuse_public_key: str = ""  # Langfuse 公開鍵（任意。未設定なら計装は no-op）
     langfuse_secret_key: str = ""  # Langfuse 秘密鍵（任意。未設定なら計装は no-op）
     langfuse_host: str = "https://cloud.langfuse.com"  # Langfuse 送信先ホスト
@@ -43,8 +48,13 @@ class Settings(BaseSettings):
     eval_judge_samples: int = 1
     eval_dataset_path: str = "evals/dataset/m3_golden.jsonl"
 
+    # Routing Settings (M7 adaptive routing)
+    routing_theta: float = 0.56  # grade の grounded/direct 分岐閾値(THETA)。rerank_score >= routing_theta のchunkのみkeepする。ADR 0001でキャリブレーション決定した値をデフォルトに採用（docs/adr/0001_m7_theta_threshold.md）
+
     # Ingestion Settings
-    ingest_delete_guard_ratio: float = 0.5  # 削除安全弁: 生存source比がこの値未満なら削除フェーズを中断（暫定値）
+    ingest_delete_guard_ratio: float = (
+        0.5  # 削除安全弁: 生存source比がこの値未満なら削除フェーズを中断（暫定値）
+    )
     ingest_advisory_lock_key: int = 727110001  # 多重実行抑止（開始の原子性）用 advisory lock キー
     ingest_stale_running_sec: int = 600  # running行をstaleとみなす経過秒（暫定値。実測後見直し）
     ingest_stats_flush_every: int = 10  # 走査N件ごとにingest_runs.statsを逐次UPDATE
@@ -58,6 +68,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
 
 settings = Settings()
 

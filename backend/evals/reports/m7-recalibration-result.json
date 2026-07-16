@@ -1,0 +1,50 @@
+{
+  "theta": 0.56,
+  "grid_search_step": 0.01,
+  "collected": 129,
+  "errors": 1,
+  "error_ids": [
+    "c038"
+  ],
+  "calibration": {
+    "theta": 0.56,
+    "grounded_total": 49,
+    "direct_total": 41,
+    "grounded_miss": 2,
+    "grounded_miss_rate": 0.04081632653061224,
+    "grounded_miss_ids": [
+      "c011",
+      "c012"
+    ],
+    "direct_correct": 32,
+    "direct_wrong": 9,
+    "direct_wrong_ids": [
+      "g009",
+      "g012",
+      "g033",
+      "g039",
+      "a016",
+      "a017",
+      "a018",
+      "a020",
+      "a022"
+    ]
+  },
+  "holdout": {
+    "theta": 0.56,
+    "grounded_total": 21,
+    "direct_total": 18,
+    "grounded_miss": 0,
+    "grounded_miss_rate": 0.0,
+    "grounded_miss_ids": [],
+    "direct_correct": 14,
+    "direct_wrong": 4,
+    "direct_wrong_ids": [
+      "g014",
+      "g037",
+      "a019",
+      "a028"
+    ]
+  },
+  "verdict": "NO-GO"
+}

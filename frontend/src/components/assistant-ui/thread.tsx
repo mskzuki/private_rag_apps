@@ -8,6 +8,7 @@ import {
 import { ThreadFollowupSuggestions } from "@/components/assistant-ui/follow-up-suggestions";
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { Citations } from "@/components/Citations";
+import { RouteBadge } from "@/components/RouteBadge";
 import {
   Reasoning,
   ReasoningContent,
@@ -412,6 +413,7 @@ const AssistantMessage: FC = () => {
               case "text":
                 return (
                   <div className="flex w-full flex-col gap-2">
+                    <RouteBadge />
                     <MarkdownText />
                     <Citations />
                   </div>

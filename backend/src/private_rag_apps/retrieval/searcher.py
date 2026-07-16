@@ -32,13 +32,23 @@ def retrieve_context(
             return {"fused_ranking": chunks, "reranked_ranking": chunks}
     elif strategy == "hybrid":
         chunks = _hybrid_search(
-            db, query, emb, settings.candidate_k, settings.rrf_k, settings.rerank_top_k,
+            db,
+            query,
+            emb,
+            settings.candidate_k,
+            settings.rrf_k,
+            settings.rerank_top_k,
         )
         if diagnostic_mode:
             return {"fused_ranking": chunks, "reranked_ranking": chunks}
     elif strategy == "hybrid_rerank":
         fused_chunks = _hybrid_search(
-            db, query, emb, settings.candidate_k, settings.rrf_k, settings.fuse_k,
+            db,
+            query,
+            emb,
+            settings.candidate_k,
+            settings.rrf_k,
+            settings.fuse_k,
         )
         # 評価用トップKが指定されていればそれを使用、そうでなければ rerank_top_k
         top_k = settings.eval_top_k if diagnostic_mode else settings.rerank_top_k
@@ -55,19 +65,30 @@ def retrieve_context(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 @observe(name="embed_query")
 def _embed_query(query: str) -> List[float]:
     """検索クエリを埋め込みモデル(Voyage)を用いてベクトル化する"""
-    voyage_client = voyageai.Client(api_key=settings.voyage_api_key, max_retries=settings.voyage_max_retries)
+    voyage_client = voyageai.Client(
+        api_key=settings.voyage_api_key, max_retries=settings.voyage_max_retries
+    )
     from typing import cast
-    return cast(List[float], voyage_client.embed(
-        [query], model=settings.embed_model, input_type="query",
-    ).embeddings[0])
+
+    return cast(
+        List[float],
+        voyage_client.embed(
+            [query],
+            model=settings.embed_model,
+            input_type="query",
+        ).embeddings[0],
+    )
 
 
 @observe(name="vector_search")
 def _vector_search(
-    db: Session, emb: List[float], top_k: int,
+    db: Session,
+    emb: List[float],
+    top_k: int,
 ) -> List[Dict[str, Any]]:
     """コサイン類似度を用いた純粋なベクトル検索（pgvector）を実行し、上位結果を返す"""
     stmt = (
@@ -123,13 +144,20 @@ def _hybrid_search(
 
     client = get_client()
     with client.start_as_current_observation(name="rrf_fuse"):
-        result_ids = db.execute(sql, {
-            "q_embedding": emb_str,
-            "q_text": query,
-            "cand_k": candidate_k,
-            "rrf_k": rrf_k,
-            "fuse_k": top_k,
-        }).scalars().all()
+        result_ids = (
+            db.execute(
+                sql,
+                {
+                    "q_embedding": emb_str,
+                    "q_text": query,
+                    "cand_k": candidate_k,
+                    "rrf_k": rrf_k,
+                    "fuse_k": top_k,
+                },
+            )
+            .scalars()
+            .all()
+        )
 
         client.update_current_span(
             metadata={"fused_candidates": len(result_ids)},
@@ -168,7 +196,9 @@ def _rerank(
 
     documents = [c["content"] for c in chunks]
     try:
-        voyage_client = voyageai.Client(api_key=settings.voyage_api_key, max_retries=settings.voyage_max_retries)
+        voyage_client = voyageai.Client(
+            api_key=settings.voyage_api_key, max_retries=settings.voyage_max_retries
+        )
         rerank_result = voyage_client.rerank(
             query=query,
             documents=documents,
@@ -179,16 +209,21 @@ def _rerank(
         # Record usage if available
         try:
             get_client().update_current_generation(
-                usage_details={
-                    "input": rerank_result.total_tokens,
-                    "output": 0
-                },
-                model="rerank-2.5"
+                usage_details={"input": rerank_result.total_tokens, "output": 0}, model="rerank-2.5"
             )
         except (AttributeError, Exception):
             pass  # SDK version may not expose total_tokens or client may be disabled
 
-        reranked_chunks = [chunks[r.index] for r in rerank_result.results]
+        # rerank_score: Voyage rerank-2.5 の relevance_score (0〜1、降順) をそのまま格納する。
+        # M7 grade (graph/nodes/grade.py) の前提フィールド。値の意味論は
+        # backend/evals/analyze_score_distribution.py / m7-score-distribution.md §1 で
+        # THETA=0.56 のキャリブレーションに使った値と一致させる必要がある(ADR 0001)。
+        # 元のchunk dictはmutateせず、新しいdictとして返す(diagnostic_modeのfused_rankingが
+        # 同じdictオブジェクトを参照しているため、副作用でrerank_scoreが混入するのを避ける)。
+        # ランキング順序・対象チャンクの選定ロジック自体は変更しない(rerank_result.resultsの順序をそのまま使う)。
+        reranked_chunks = [
+            {**chunks[r.index], "rerank_score": r.relevance_score} for r in rerank_result.results
+        ]
         return reranked_chunks
 
     except Exception as e:
@@ -205,11 +240,13 @@ def _format_chunks(
 ) -> List[Dict[str, Any]]:
     context_chunks = []
     for chunk, source in results:
-        context_chunks.append({
-            "chunk_id": str(chunk.id),
-            "content": chunk.content,
-            "metadata": chunk.metadata_,
-            "title": source.title,
-            "path": source.path,
-        })
+        context_chunks.append(
+            {
+                "chunk_id": str(chunk.id),
+                "content": chunk.content,
+                "metadata": chunk.metadata_,
+                "title": source.title,
+                "path": source.path,
+            }
+        )
     return context_chunks

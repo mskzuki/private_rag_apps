@@ -1,0 +1,20 @@
+{"id": "f001", "search_query": "pg_bigm の代替として検討された拡張機能や手法はあるか？", "rewrite_applied": true}
+{"id": "f002", "search_query": "ベクトルインデックスにおける HNSW の採用理由と利点について教えてください", "rewrite_applied": true}
+{"id": "f003", "search_query": "ハイブリッド検索の結果融合における Reciprocal Rank Fusion (RRF) のパラメータとは？", "rewrite_applied": true}
+{"id": "f004", "search_query": "一般的な RDB の ACID 特性とは何か", "rewrite_applied": true}
+{"id": "f005", "search_query": "Voyage (voyage-4-lite) または OpenAI text-embedding-3 のコストはいくらか", "rewrite_applied": true}
+{"id": "f006", "search_query": "ドキュメント更新時のチャンクの扱いにおいて、削除されたファイルの場合にはどのような処理が行われるのか？", "rewrite_applied": true}
+{"id": "f007", "search_query": "LLM 呼び出しが許可されているのは generation および evals モジュールのみですが、埋め込み（Embedding）モデルや API の呼び出しはどのモジュールで許可されていますか？", "rewrite_applied": true}
+{"id": "f008", "search_query": "RRF パラメータ k のデフォルト値を変更する方法は？", "rewrite_applied": true}
+{"id": "f009", "search_query": "チャンキング戦略におけるオーバーラップ（重複）の割合の目安はいくらか？", "rewrite_applied": true}
+{"id": "f010", "search_query": "ファイルが変更された場合のインジェスト時の重複排除や更新処理の方法は？", "rewrite_applied": true}
+{"id": "f011", "search_query": "一般的な API のバージョニング戦略の種類とは？", "rewrite_applied": true}
+{"id": "f012", "search_query": "マルチターンの会話においてシステムが参照する履歴のターン数はいくつか？", "rewrite_applied": true}
+{"id": "f013", "search_query": "API 経由でインゲスチョンを実行した後の完了状態を確認する方法とは？", "rewrite_applied": true}
+{"id": "f014", "search_query": "チャット UI に `assistant-ui` を選定した理由や判断基準は何か", "rewrite_applied": true}
+{"id": "f015", "search_query": "検索結果が 0 件の場合、生成モデルは呼び出されないのか？", "rewrite_applied": true}
+{"id": "f016", "search_query": "PostgreSQL テーブル構成で JSONB 型の列を使用しているテーブルとカラム名を教えて", "rewrite_applied": true}
+{"id": "f017", "search_query": "取り込み実行における status='running' のチェックによる多重実行防止のデフォルトタイムアウト時間はどれくらいですか？", "rewrite_applied": true}
+{"id": "f018", "search_query": "コンテキストに答えがない場合に AI が返す特定フレーズや表示例は何か", "rewrite_applied": true}
+{"id": "f019", "search_query": "v1 でスコープ外になった機能のうち、マルチユーザー/組織テナントに関するものとは何か", "rewrite_applied": true}
+{"id": "f020", "search_query": "パフォーマンスに関する目標値としての「検索レイテンシ」の目標値はいくらか？", "rewrite_applied": true}

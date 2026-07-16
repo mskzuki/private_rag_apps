@@ -51,8 +51,13 @@ class TestRerankFallback:
         from private_rag_apps.retrieval.searcher import _rerank
 
         chunks = [
-            {"chunk_id": str(i), "content": f"content {i}", "metadata": {},
-             "title": f"doc{i}", "path": f"doc{i}.md"}
+            {
+                "chunk_id": str(i),
+                "content": f"content {i}",
+                "metadata": {},
+                "title": f"doc{i}",
+                "path": f"doc{i}.md",
+            }
             for i in range(10)
         ]
 
@@ -71,15 +76,22 @@ class TestRerankFallback:
         from private_rag_apps.retrieval.searcher import _rerank
 
         chunks = [
-            {"chunk_id": str(i), "content": f"content {i}", "metadata": {},
-             "title": f"doc{i}", "path": f"doc{i}.md"}
+            {
+                "chunk_id": str(i),
+                "content": f"content {i}",
+                "metadata": {},
+                "title": f"doc{i}",
+                "path": f"doc{i}.md",
+            }
             for i in range(5)
         ]
 
         mock_result = MagicMock()
         # Rerank reverses the order
         mock_result.results = [
-            MagicMock(index=4), MagicMock(index=2), MagicMock(index=0),
+            MagicMock(index=4),
+            MagicMock(index=2),
+            MagicMock(index=0),
         ]
         mock_result.total_tokens = 100
 
@@ -96,8 +108,13 @@ class TestRerankFallback:
         from private_rag_apps.retrieval.searcher import _rerank
 
         chunks = [
-            {"chunk_id": "0", "content": "only one", "metadata": {},
-             "title": "doc0", "path": "doc0.md"}
+            {
+                "chunk_id": "0",
+                "content": "only one",
+                "metadata": {},
+                "title": "doc0",
+                "path": "doc0.md",
+            }
         ]
 
         mock_result = MagicMock()
@@ -111,3 +128,68 @@ class TestRerankFallback:
                 result = _rerank("test query", chunks, top_k=8)
 
         assert len(result) == 1
+
+    def test_rerank_success_attaches_rerank_score(self):
+        """T4: 成功時、各チャンクに Voyage の relevance_score が rerank_score として
+        付与される（ADR 0001 / m7-score-distribution.md §1 と意味論を一致させる:
+        0〜1、Voyageのrelevance_scoreそのもの）。grade の前提（スペック rev.3 §4.3）"""
+        from private_rag_apps.retrieval.searcher import _rerank
+
+        chunks = [
+            {
+                "chunk_id": str(i),
+                "content": f"content {i}",
+                "metadata": {},
+                "title": f"doc{i}",
+                "path": f"doc{i}.md",
+            }
+            for i in range(3)
+        ]
+
+        mock_result = MagicMock()
+        # index=2が最高スコア、次いでindex=0、index=1は返らない(top_k=2相当)
+        r0 = MagicMock(index=2)
+        r0.relevance_score = 0.91
+        r1 = MagicMock(index=0)
+        r1.relevance_score = 0.42
+        mock_result.results = [r0, r1]
+        mock_result.total_tokens = 50
+
+        with patch("private_rag_apps.retrieval.searcher.voyageai") as mock_voyage:
+            mock_voyage.Client.return_value.rerank.return_value = mock_result
+            with patch("private_rag_apps.retrieval.searcher.get_client") as mock_lf:
+                mock_lf.return_value.update_current_span = MagicMock()
+                result = _rerank("test query", chunks, top_k=2)
+
+        assert [c["chunk_id"] for c in result] == ["2", "0"]
+        assert result[0]["rerank_score"] == 0.91
+        assert result[1]["rerank_score"] == 0.42
+        # 元のchunks dictは変更されない(diagnostic_modeのfused_rankingへの副作用防止)
+        assert "rerank_score" not in chunks[2]
+        assert "rerank_score" not in chunks[0]
+
+    def test_rerank_fallback_chunks_have_no_rerank_score(self):
+        """フォールバック時(Voyage呼び出し失敗)はrerank_scoreを付与しない。
+        grade側はrerank_score欠落を「kept扱い」にする安全側デフォルトを持つ
+        （スペック §3.1「迷ったらgroundedに倒す」）。ここでは _rerank 側が
+        フォールバック時に偽のスコアを捏造しないことのみを確認する"""
+        from private_rag_apps.retrieval.searcher import _rerank
+
+        chunks = [
+            {
+                "chunk_id": str(i),
+                "content": f"content {i}",
+                "metadata": {},
+                "title": f"doc{i}",
+                "path": f"doc{i}.md",
+            }
+            for i in range(3)
+        ]
+
+        with patch("private_rag_apps.retrieval.searcher.voyageai") as mock_voyage:
+            mock_voyage.Client.return_value.rerank.side_effect = RuntimeError("API down")
+            with patch("private_rag_apps.retrieval.searcher.get_client") as mock_lf:
+                mock_lf.return_value.update_current_span = MagicMock()
+                result = _rerank("test query", chunks, top_k=3)
+
+        assert all("rerank_score" not in c for c in result)

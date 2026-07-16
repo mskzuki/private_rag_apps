@@ -36,24 +36,24 @@ def test_conversations_crud():
     db.commit()
     db.close()
 
-@patch("private_rag_apps.api.main.retrieve_context")
-@patch("private_rag_apps.api.main.generate_answer_stream")
-@patch("private_rag_apps.api.main.condense")
+@patch("private_rag_apps.graph.nodes.retrieve.retrieve_context")
+@patch("private_rag_apps.graph.nodes.generate.generate_answer_stream")
+@patch("private_rag_apps.graph.nodes.rewrite.condense")
 def test_chat_bulk_save_and_history(mock_condense, mock_generate, mock_retrieve):
     # Mock retrieval
     mock_retrieve.return_value = [
         {"title": "Doc1", "chunk_id": "c1", "path": "p1.md", "content": "text"}
     ]
-    
+
     # Mock streaming response
     def mock_stream(*args, **kwargs):
         yield {"event": "citations", "data": [{"title": "Doc1", "n": 1}]}
         yield {"event": "token", "data": "Hello"}
         yield {"event": "token", "data": " World"}
-    
+
     mock_generate.side_effect = mock_stream
-    mock_condense.return_value = "condensed query"
-    
+    mock_condense.return_value = ("condensed query", True)
+
     # Create conversation manually
     db = SessionLocal()
     conv = Conversation()
@@ -62,16 +62,22 @@ def test_chat_bulk_save_and_history(mock_condense, mock_generate, mock_retrieve)
     db.refresh(conv)
     conv_id = str(conv.id)
     db.close()
-    
-    # 1. First turn (condense should NOT be called since no history)
+
+    # 1. First turn: rewriteノードはグラフ内で常に実行される(condense()自身が
+    # history空時にLLMを呼ばず早期returnする。ここではcondenseをmockしているため
+    # 呼び出し自体は発生するが、historyが空リストで呼ばれることを確認する
+    # （M7 T5: rewriteはcondense()を呼ぶだけの薄いラッパー。スペック §3.3）
     response = client.post("/api/chat", json={
         "message": "First message",
         "conversation_id": conv_id
     })
-    
+
     assert response.status_code == 200
-    mock_condense.assert_not_called()
-    
+    mock_condense.assert_called_once()
+    first_args, _ = mock_condense.call_args
+    assert first_args[0] == "First message"
+    assert first_args[1] == []
+
     # Parse SSE output (line by line)
     content = response.content.decode("utf-8")
     assert "event: citations" in content

@@ -1,4 +1,4 @@
-.PHONY: setup migrate demo ingest test lint fmt eval api web openapi
+.PHONY: setup migrate demo ingest test lint fmt eval eval-routing eval-all api web openapi
 
 api:
 	docker compose up --build api
@@ -41,6 +41,13 @@ fmt:
 # 評価データセットでEvalハーネスを実行。合否ではなくスコア回帰を監視する（テストとは別物）
 eval:
 	cd backend && uv run python -m private_rag_apps.evals
+
+# M7: routing evalデータセットでrewrite→retrieve→gradeを評価する（generateは実行しない。高速）
+eval-routing:
+	cd backend && uv run python -m private_rag_apps.evals.routing
+
+# M7: eval と eval-routing の両方を実行する
+eval-all: eval eval-routing
 
 # FastAPIアプリからOpenAPIスキーマを生成する。API起動せず定義から直接出力
 openapi:

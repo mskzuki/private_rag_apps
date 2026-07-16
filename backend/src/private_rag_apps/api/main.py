@@ -22,8 +22,9 @@ from private_rag_apps.ingestion.concurrency import (
     start_run,
 )
 from private_rag_apps.ingestion.indexer import execute_ingestion
-from private_rag_apps.retrieval.searcher import retrieve_context
-from private_rag_apps.generation.generator import condense, generate_answer_stream
+from private_rag_apps.graph.builder import build_graph
+from private_rag_apps.graph.state import GraphState
+from private_rag_apps.graph.state import Message as HistoryMessage
 
 app = FastAPI(title="Private RAG Apps API")
 
@@ -145,18 +146,19 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
             existing_conv.title = body.message[:settings.title_max_chars]
             db.commit()
 
-    # Get history for condense
+    # 会話履歴のロード（正はDB。グラフはステートレスに保つ。スペック §3.4）。
+    # rewrite ノード（condense()呼び出し）はグラフ内で実行するため、ここでは
+    # 生の user_query と history をそのままグラフに渡す（M7 T5でAGENTS.md §3の
+    # 暫定例外を解消。以前はここでグラフの外からcondense()を直接呼んでいた）
     history = db.query(Message).filter(Message.conversation_id == conversation_id).order_by(Message.created_at).all()
-    history_dicts = [{"role": m.role, "content": m.content} for m in history]
-    
-    # Condense
-    if existing_messages_count > 0:
-        search_query = condense(body.message, history_dicts)
-    else:
-        search_query = body.message
+    history_dicts: List[HistoryMessage] = [{"role": m.role, "content": m.content} for m in history]
 
-    # Retrieval
-    context_chunks = retrieve_context(db, query=search_query)
+    graph = build_graph(db)
+    initial_state: GraphState = {
+        "conversation_id": conversation_id,
+        "user_query": body.message,
+        "history": history_dicts,
+    }
 
     async def event_generator():
         message_id = str(uuid.uuid4())
@@ -166,8 +168,8 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
         first_token = False
 
         try:
-            # Generate Answer
-            for event in generate_answer_stream(search_query, context_chunks):
+            # Retrieve → Generate をグラフ経由で実行し、custom streamのイベントを消費する
+            async for event in graph.astream(initial_state, stream_mode="custom"):
                 if await request.is_disconnected():
                     has_error = True
                     break
@@ -189,6 +191,10 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
                 elif event_type == "citations":
                     citations_data = data
                     yield {"event": "citations", "data": json.dumps(data, ensure_ascii=False)}
+                elif event_type in ("node_start", "route_decided", "rewrite_result"):
+                    # M7 T6（スペック §5.2）: グラフ実行の透明性用イベント。
+                    # full_content/citations_data の蓄積には関与しない素通し
+                    yield {"event": event_type, "data": json.dumps(data, ensure_ascii=False)}
                 elif event_type == "error":
                     has_error = True
                     yield {"event": "error", "data": json.dumps(data, ensure_ascii=False)}
