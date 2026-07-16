@@ -11,8 +11,8 @@ prompt cache 制御・Langfuse 計装は generate_answer_stream/generate_direct_
 側の実装をそのまま維持する（LangGraph は状態機械・イベント伝搬のみを担う。スペック §3.3）。
 
 トークン等のイベントは get_stream_writer() で stream_mode="custom" に流す
-（`astream_events` は使わない。スペック §5.1）。T4ではSSE新規イベント（node_start等。T6スコープ）
-は追加しない。
+（`astream_events` は使わない。スペック §5.1）。T6でノード開始時の `node_start` を
+get_stream_writer() 経由で送出するようになった。
 """
 
 from typing import Any, Dict, List, cast
@@ -28,6 +28,8 @@ from private_rag_apps.graph.state import GraphState
 
 def generate(state: GraphState) -> dict[str, Any]:
     writer = get_stream_writer()
+    writer({"event": "node_start", "data": {"node": "generate"}})
+
     query = state["search_query"]
     # route未設定時はgrounded扱い(誤判定コストの非対称性。スペック §3.1「迷ったらgroundedに倒す」)。
     # 実際のグラフではgradeが必ず先行するため通常は発生しない防御的デフォルト

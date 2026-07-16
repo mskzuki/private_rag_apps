@@ -191,6 +191,10 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
                 elif event_type == "citations":
                     citations_data = data
                     yield {"event": "citations", "data": json.dumps(data, ensure_ascii=False)}
+                elif event_type in ("node_start", "route_decided", "rewrite_result"):
+                    # M7 T6（スペック §5.2）: グラフ実行の透明性用イベント。
+                    # full_content/citations_data の蓄積には関与しない素通し
+                    yield {"event": event_type, "data": json.dumps(data, ensure_ascii=False)}
                 elif event_type == "error":
                     has_error = True
                     yield {"event": "error", "data": json.dumps(data, ensure_ascii=False)}

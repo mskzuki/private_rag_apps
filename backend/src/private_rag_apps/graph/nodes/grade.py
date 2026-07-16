@@ -15,15 +15,25 @@ generate 時のLLM(grounded プロンプトの指示)の責務である
 質問へのカバレッジは測定できないため)。**grade にカバレッジ判定ロジックを
 追加してはならない。** grade は最後まで「rerank_scoreとTHETAの比較のみを行う純関数」
 であり続けるべきである。
+
+T6（スペック §5.2）でノード開始時の `node_start` と、grade 完了時の `route_decided`
+を get_stream_writer() 経由で送出するようになった。`route_decided` の `top_score` は
+`evals/routing.py` の定義（retrieved 先頭chunkのrerank_score。retrieved が空ならNone）
+と同一の意味で計算する。
 """
 
 from typing import Any, Literal
+
+from langgraph.config import get_stream_writer
 
 from private_rag_apps.core.config import settings
 from private_rag_apps.graph.state import GraphState
 
 
 def grade(state: GraphState) -> dict[str, Any]:
+    writer = get_stream_writer()
+    writer({"event": "node_start", "data": {"node": "grade"}})
+
     theta = settings.routing_theta
     retrieved = state.get("retrieved", [])
 
@@ -34,5 +44,21 @@ def grade(state: GraphState) -> dict[str, Any]:
     # 安全側のデフォルトであり、コンテキストカバレッジの判定ではない。
     kept = [c for c in retrieved if c.get("rerank_score", theta) >= theta]
     route: Literal["grounded", "direct"] = "direct" if not kept else "grounded"
+
+    # top_score: retrieved(rerank_score降順)の先頭chunkのrerank_score。
+    # retrieved が空ならNone(evals/routing.pyのtop_score定義と同一。T6ブリーフ補足3)
+    top_score = retrieved[0].get("rerank_score") if retrieved else None
+
+    writer(
+        {
+            "event": "route_decided",
+            "data": {
+                "route": route,
+                "kept": len(kept),
+                "dropped": len(retrieved) - len(kept),
+                "top_score": top_score,
+            },
+        }
+    )
 
     return {"kept": kept, "route": route}
