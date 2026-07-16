@@ -29,3 +29,5 @@ backend/evals/reports/*
 !backend/evals/reports/m7-direct-groundedness.md
 !backend/evals/reports/m7-supplement-format.md
 !backend/evals/reports/m7-supplement-format-attempt1.md
+!backend/evals/reports/m7-recalibration-result.md
+!backend/evals/reports/m7-recalibration-result.json

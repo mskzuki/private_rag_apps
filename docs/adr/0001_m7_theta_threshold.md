@@ -34,3 +34,42 @@ THETA = **0.56** を採用する。
 - スコア分布の分離自体は明確（grounded中央値0.775、direct中央値0.421）だが、ambiguous/followupカテゴリを中心にグレーゾーン（概ね0.41〜0.82）が実在するため、`make eval-routing` 運用開始後も閾値近傍の事例を継続的にモニタリングすることを推奨する
 - 130問中4問（`g033`, `a016`, `a004`, `a029`）はVoyage AI無支払い枠のレート制限により最終的にスコア取得できず、calibration/holdoutから除外されている。有償プラン切替後の再取得とTHETA再確認は本ADRのスコープ外の任意対応として残されている
 - 本キャリブレーションは、現状 `retrieval/searcher.py::_rerank()` がスコアをチャンクに付与しないため、同関数を経由せず本番と同一設定でVoyage rerank APIを直接呼び出す方式で行った。T4で `_rerank()` に `rerank_score` フィールドを追加する際は、ここで使った `relevance_score`（0〜1、降順）と意味論を一致させる必要がある（一致しない場合、本ADRのTHETA=0.56は無意味になる）
+
+---
+
+## 追記（2026-07-16、T4: `make eval-routing`実行によるNO-GO判定と再キャリブレーション）
+
+### 経緯
+
+T4で`_rerank()`に`rerank_score`を実装後（本ADRの意味論と一致することを単体テストで確認済み）、`make eval-routing`（`backend/src/private_rag_apps/evals/routing.py`）を実行し、THETA=0.56をholdoutに適用したところ、**NO-GO**判定となった。
+
+| 指標 | 実績 | 基準 |
+|---|---|---|
+| grounded見逃し | 0/21件 | ≤ 1件 |
+| direct誤り | **4/18件**（該当id: g014, g037, a019, a028） | ≤ 3件（1件超過） |
+
+原因: 決定時点(T2)ではVoyageレート制限により130問中4問（`g033`, `a016`, `a004`, `a029`）が未収集のままcalibration 89/91・holdout 37/39で判定していた。T4の`make eval-routing`実行では130問中129問（1問`c038`のみ収集失敗）とほぼ完全なデータが得られ、以前欠けていたholdout側2件（`a004`, `a029`）が新たに評価対象に加わった。これは本ADR「Consequences」節で「未収集分が収集できていたら判定が変わっていた可能性がある」と明記していたリスクが顕在化したものである。
+
+### 再キャリブレーション（ユーザー承認済みの対応）
+
+holdoutの結果を見て逆算するのではなく、正規の手順（calibrationのみでgrid search）でTHETAを再決定した（`backend/evals/recalibrate_theta.py`、入力: `backend/evals/dataset/routing_eval_results.jsonl`）。
+
+- calibration（90問、`c038`除く）でgrid search（step=0.01、制約: grounded見逃し率≤0.05、目的関数: direct適中最大化、tie-break: より低いtheta）を実施した結果、**THETA=0.56が引き続き一意に最適**（direct_correct=32/41で全候補中最大。全101候補のうち制約を満たす57候補を全数確認し、tie無し）。
+- 決定したTHETA=0.56を、あらためてholdout（39問、1回のみ）に適用したところ、**T4実行時と全く同じ結果（grounded見逃し0/21、direct誤り4/18、該当id同一）**が再現され、**NO-GOが確定**した。
+
+**THETAの値は変更しない（0.56のまま。`core/config.py`の変更なし）**。再キャリブレーションの結果、0.56自体がより完全なデータの下でも引き続き最適値であることが確認されたため。
+
+### 重要な追加所見: direct誤り4件はVoyageリランク失敗のアーティファクトである可能性が高い
+
+`routing_eval_results.jsonl`を精査した結果、**129問中22問（17%）でVoyage rerankが失敗し、`rerank_score`が全チャンクでNone（フォールバック: RRF順のまま返す。`retrieval/searcher.py::_rerank()`参照）になっていた**ことが判明した。`grade()`はスコア欠落チャンクを安全側デフォルトでkept扱いにする設計（誤判定コストの非対称性。スペック§3.1「迷ったらgroundedに倒す」）のため、**rerankが失敗した項目は、THETAの値に関わらず必ずgrounded判定になる**。
+
+holdoutのdirect誤り4件（`g014`, `g037`, `a019`, `a028`）はいずれも該当し、**全件がこのrerank失敗パターンに一致していた**（expected_route=directなのにrerankが失敗しgrounded判定になったことでdirect誤りとしてカウントされた）。calibrationのdirect誤り9件のうち5件（`g009`, `g012`, `g033`, `g039`, `a022`）も同様のパターン。
+
+この所見は、**THETA=0.56自体の妥当性を疑う根拠にはならない**（grid searchはこのフォールバックの影響を受けたデータも含めて実施しており、それでも0.56が最適と出ている）が、**holdoutの「direct誤り4/18」という数字自体は、真の閾値判定精度ではなくVoyage APIの一時的な障害を測定している可能性が高い**ことを意味する。この4件（および他の18件の欠落データ）についてVoyage rerankを再試行し、実スコアを取得した上で判定をやり直すことが、より正確な評価につながる可能性が高い。この対応を実施するかはコントローラー判断とし、本ADRでは実施していない（`.superpowers/sdd/task-T4-report.md`に詳細と提案を記録）。
+
+### 結論（本追記時点）
+
+- THETA=0.56を維持（変更なし）
+- `make eval-routing`のholdout判定は**NO-GO**（direct誤り4/18が基準を1件超過）
+- ただし上記の通り、この超過分はVoyageレート制限によるデータ欠落が主因である可能性が高く、額面通りの「grade精度の問題」ではない可能性がある
+- 本件の最終判断（欠落データの再取得を試みるか、NO-GOをそのまま受け入れM8のLLM grader検討[スペック§7.4]に進むか）はコントローラーに委ねる

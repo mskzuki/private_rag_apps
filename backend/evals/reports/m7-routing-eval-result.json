@@ -1,0 +1,211 @@
+{
+  "theta": 0.56,
+  "collected": 149,
+  "errors": 1,
+  "error_ids": [
+    "c038"
+  ],
+  "calibration": {
+    "grounded_total": 49,
+    "direct_total": 41,
+    "grounded_miss": 2,
+    "grounded_miss_ids": [
+      "c011",
+      "c012"
+    ],
+    "direct_wrong": 9,
+    "direct_wrong_ids": [
+      "g009",
+      "g012",
+      "g033",
+      "g039",
+      "a016",
+      "a017",
+      "a018",
+      "a020",
+      "a022"
+    ]
+  },
+  "holdout": {
+    "grounded_total": 21,
+    "direct_total": 18,
+    "grounded_miss": 0,
+    "grounded_miss_ids": [],
+    "direct_wrong": 4,
+    "direct_wrong_ids": [
+      "g014",
+      "g037",
+      "a019",
+      "a028"
+    ]
+  },
+  "rewrite_quality": {
+    "compared_count": 20,
+    "with_rewrite_correct": 20,
+    "without_rewrite_correct": 14,
+    "degraded_ids": [],
+    "details": [
+      {
+        "id": "f001",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": true,
+        "with_rewrite_top_score": 0.58984375,
+        "without_rewrite_top_score": 0.76171875
+      },
+      {
+        "id": "f002",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": true,
+        "with_rewrite_top_score": null,
+        "without_rewrite_top_score": 0.58203125
+      },
+      {
+        "id": "f003",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": true,
+        "with_rewrite_top_score": 0.82421875,
+        "without_rewrite_top_score": 0.625
+      },
+      {
+        "id": "f004",
+        "expected_route": "direct",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": true,
+        "with_rewrite_top_score": 0.3671875,
+        "without_rewrite_top_score": 0.359375
+      },
+      {
+        "id": "f005",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": false,
+        "with_rewrite_top_score": 0.58984375,
+        "without_rewrite_top_score": 0.404296875
+      },
+      {
+        "id": "f006",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": true,
+        "with_rewrite_top_score": 0.84375,
+        "without_rewrite_top_score": 0.72265625
+      },
+      {
+        "id": "f007",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": true,
+        "with_rewrite_top_score": 0.88671875,
+        "without_rewrite_top_score": 0.75
+      },
+      {
+        "id": "f008",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": true,
+        "with_rewrite_top_score": null,
+        "without_rewrite_top_score": 0.66015625
+      },
+      {
+        "id": "f009",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": true,
+        "with_rewrite_top_score": 0.87109375,
+        "without_rewrite_top_score": 0.77734375
+      },
+      {
+        "id": "f010",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": true,
+        "with_rewrite_top_score": 0.90625,
+        "without_rewrite_top_score": 0.79296875
+      },
+      {
+        "id": "f011",
+        "expected_route": "direct",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": false,
+        "with_rewrite_top_score": 0.380859375,
+        "without_rewrite_top_score": null
+      },
+      {
+        "id": "f012",
+        "expected_route": "direct",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": true,
+        "with_rewrite_top_score": 0.40234375,
+        "without_rewrite_top_score": 0.4296875
+      },
+      {
+        "id": "f013",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": false,
+        "with_rewrite_top_score": 0.640625,
+        "without_rewrite_top_score": 0.4609375
+      },
+      {
+        "id": "f014",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": false,
+        "with_rewrite_top_score": 0.90234375,
+        "without_rewrite_top_score": 0.392578125
+      },
+      {
+        "id": "f015",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": false,
+        "with_rewrite_top_score": 0.85546875,
+        "without_rewrite_top_score": 0.46875
+      },
+      {
+        "id": "f016",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": true,
+        "with_rewrite_top_score": 0.66015625,
+        "without_rewrite_top_score": 0.7109375
+      },
+      {
+        "id": "f017",
+        "expected_route": "direct",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": true,
+        "with_rewrite_top_score": 0.3828125,
+        "without_rewrite_top_score": 0.408203125
+      },
+      {
+        "id": "f018",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": false,
+        "with_rewrite_top_score": 0.69140625,
+        "without_rewrite_top_score": 0.451171875
+      },
+      {
+        "id": "f019",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": true,
+        "with_rewrite_top_score": 0.875,
+        "without_rewrite_top_score": 0.7578125
+      },
+      {
+        "id": "f020",
+        "expected_route": "grounded",
+        "with_rewrite_correct": true,
+        "without_rewrite_correct": true,
+        "with_rewrite_top_score": null,
+        "without_rewrite_top_score": 0.80859375
+      }
+    ]
+  },
+  "verdict": "NO-GO"
+}
