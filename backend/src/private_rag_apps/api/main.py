@@ -136,7 +136,11 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
         db.refresh(conv)
         conversation_id = str(conv.id)
         
-    propagate_attributes(session_id=conversation_id)
+    # session_id は「現在アクティブなspan(=@observe()によるこのリクエストのルートtrace)」に
+    # 即時付与される(with に入った時点で同期的に設定される。langfuse SDK 4.x OTelネイティブ実装。
+    # graph/nodes/grade.py の trace レベルmetadata記録と同じ仕組み)。空bodyのwithで良い
+    with propagate_attributes(session_id=conversation_id):
+        pass
     
     # Check if this is the first turn to set title
     existing_messages_count = db.query(Message).filter(Message.conversation_id == conversation_id).count()
@@ -181,10 +185,12 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
                     if not first_token:
                         ttft_ms = (time.time() - start_time) * 1000
                         first_token = True
-                        try:
-                            from langfuse import get_client
-                            get_client().update_current_trace(metadata={"ttft_ms": round(ttft_ms, 2)})
-                        except Exception:
+                        # update_current_trace() はインストール済みlangfuse SDK(4.x、OTelネイティブ
+                        # 実装)には存在しないメソッドで、以前はここで呼んでいたため常に例外が
+                        # 握りつぶされ記録されていなかった(2026-07-16発見・修正)。propagate_attributes
+                        # のmetadataキーは langfuse.trace.metadata.* 名前空間のため、現在アクティブな
+                        # spanに関わらずtraceレベルのmetadataとして記録される(graph/nodes/grade.py参照)
+                        with propagate_attributes(metadata={"ttft_ms": round(ttft_ms, 2)}):
                             pass
                     full_content += data
                     yield {"event": "token", "data": json.dumps(data, ensure_ascii=False)}

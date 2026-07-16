@@ -161,6 +161,59 @@ def test_chat_sse_event_sequence_and_schema_match_pre_graph_capture(
         db.close()
 
 
+@patch("private_rag_apps.api.main.propagate_attributes")
+@patch("private_rag_apps.graph.nodes.retrieve.retrieve_context")
+@patch("private_rag_apps.generation.generator.get_llm_client")
+def test_chat_propagates_session_id_and_ttft_via_with_block(
+    mock_get_llm_client: MagicMock,
+    mock_retrieve_context: MagicMock,
+    mock_propagate: MagicMock,
+) -> None:
+    """2026-07-16修正: api/main.pyの`propagate_attributes(session_id=...)`が`with`を
+    伴わずに呼ばれており、実質的に何も伝播していなかった(コンテキストマネージャの
+    __enter__を経ないと属性が設定されない。graph/nodes/grade.pyの正しい使用例を参照)。
+    同様に`update_current_trace()`はインストール済みlangfuse SDKに存在しないメソッドで、
+    ttft_ms記録がexcept節で握りつぶされ常に失敗していた。修正後は両方とも
+    `with propagate_attributes(...): pass`の形で呼ばれることを検証する
+    （mock_propagate自体はコンテキストマネージャではないため、`__enter__`のMagicMock
+    デフォルト動作に委ねてよい。ここでは呼び出し引数のみを検証する）"""
+    mock_retrieve_context.return_value = [
+        {"chunk_id": "c1", "content": "text", "title": "Doc1", "path": "p1.md"}
+    ]
+    mock_get_llm_client.return_value = _make_stub_llm_client()
+
+    db = SessionLocal()
+    conv = Conversation()
+    db.add(conv)
+    db.commit()
+    db.refresh(conv)
+    conv_id = str(conv.id)
+    db.close()
+
+    try:
+        response = client.post(
+            "/api/chat", json={"message": "test question", "conversation_id": conv_id}
+        )
+        assert response.status_code == 200
+
+        calls = mock_propagate.call_args_list
+        assert calls[0].kwargs == {"session_id": conv_id}
+
+        ttft_calls = [c for c in calls if "metadata" in c.kwargs]
+        assert len(ttft_calls) == 1
+        assert set(ttft_calls[0].kwargs["metadata"].keys()) == {"ttft_ms"}
+        assert isinstance(ttft_calls[0].kwargs["metadata"]["ttft_ms"], float)
+
+        # 両方とも with 文のコンテキストマネージャとして使われている
+        # (bareで呼ぶだけの旧実装ではこの__enter__は発生しない)
+        assert mock_propagate.return_value.__enter__.call_count == len(calls)
+    finally:
+        db = SessionLocal()
+        db.query(Conversation).filter(Conversation.id == conv_id).delete()
+        db.commit()
+        db.close()
+
+
 @patch("private_rag_apps.graph.nodes.retrieve.retrieve_context")
 @patch("private_rag_apps.graph.nodes.generate.generate_answer_stream")
 def test_chat_sse_ignores_unknown_event_type_from_node(
