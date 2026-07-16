@@ -151,9 +151,9 @@
 7. 補足書式検証: e2e eval の複合質問 5 件で、context 外の内容が補足セクションに分離されていることを判定
 
 **完了条件:**
-- [x] `make eval-routing`（holdout）: grounded 見逃し ≤ 1 件、direct 誤り ≤ 3 件（T2 の GO 判定の再現）→ **NO-GO**（grounded見逃し0/21・direct誤り4/18で基準を1件超過。calibrationのみでの正規の再キャリブレーションでもTHETA=0.56が最適と再確認、holdout結果は再現。ユーザー承認によりNO-GOを受け入れ、スペック§7.4に従いLLM graderスペックを別途起票する。詳細: `docs/adr/0001_m7_theta_threshold.md`追記部分, `docs/adr/0005_m7_no_go_accepted.md`）
+- [x] ~~`make eval-routing`（holdout）: grounded 見逃し ≤ 1 件、direct 誤り ≤ 3 件（T2 の GO 判定の再現）~~ → **NO-GO**（grounded見逃し0/21・direct誤り4/18で基準を1件超過。calibrationのみでの正規の再キャリブレーションでもTHETA=0.56が最適と再確認、holdout結果は再現。**未解決事項:** direct誤り4件は全件Voyage rerank失敗によるフォールバック起因の可能性が高いとT4レビューで独立検証されたが、22件の再取得は実施していない（コスト対効果を理由にユーザー判断で見送り）。ユーザー承認によりNO-GOを受け入れ、スペック§7.4に従いLLM graderスペックを別途起票する。詳細: `docs/adr/0001_m7_theta_threshold.md`追記部分, `docs/adr/0005_m7_no_go_accepted.md`）
 - [x] direct groundedness: 人手裁定後の真の違反 0
-- [x] 補足書式: 複合質問 5/5 で分離が確認できる（判定結果の人手確認込み）→ **3/5に留まる**（プロンプト調整を1回試行したが悪化したため撤回。既知の制約として記録し、構造化出力化をM7追補スペックとして提案。タスクリスト実装ノート通りの扱い）
+- [x] ~~補足書式: 複合質問 5/5 で分離が確認できる（判定結果の人手確認込み）~~ → **3/5に留まる**（プロンプト調整を1回試行したが悪化したため撤回。既知の制約として記録し、構造化出力化をM7追補スペックとして提案。タスクリスト実装ノート通りの扱い）
 - [x] 2 経路 + 補足発生ケースの手動スモークテスト（grounded 2 件 / direct 2 件 / 複合 1 件、SSE 経由）
 - [x] ~~`make eval`（既存 e2e）が T0 ベースライン非劣化~~ **対象外（`docs/adr/0004_m7_make_eval_excluded.md`。ユーザー指示によりM7の完了条件から除外）**
 - [x] AGENTS.md 更新済み
