@@ -103,7 +103,9 @@ def run_eval() -> None:
                     role = "user" if i % 2 == 0 else "assistant"
                     history_messages.append({"role": role, "content": text})
 
-                query_to_search = condense(item.question, history_messages)
+                # M7 T5: condense() は (search_query, rewrite_applied) を返す。
+                # make eval は rewrite_applied を使わない（既存e2e evalの範疇。ADR 0004）
+                query_to_search, _ = condense(item.question, history_messages)
                 print(f"  Condensed query: {query_to_search}")
 
             # 1. 検索
