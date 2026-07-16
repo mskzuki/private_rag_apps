@@ -19,9 +19,10 @@ async def _run_graph(graph: object, initial_state: dict[str, object]) -> list[di
 def test_build_graph_wires_retrieve_grade_generate_grounded_route(
     mock_retrieve_context: MagicMock, mock_generate_stream: MagicMock
 ) -> None:
-    """retrieve → grade → generate のグラフが正しい順序で実行され、
-    generate ノード内で get_stream_writer() に渡したイベントが
-    graph.astream(stream_mode="custom") でそのまま観測できること（スペック §5.1）。
+    """rewrite → retrieve → grade → generate のグラフが正しい順序で実行され、
+    各ノードが get_stream_writer() に渡したイベント（T6: node_start/route_decided/
+    rewrite_result含む。スペック §5.2）が graph.astream(stream_mode="custom") で
+    そのまま観測できること（スペック §5.1）。
     rerank_score が無いchunk(既存retrieve_contextモックの形)はgrade側で
     kept扱いになるため grounded 経路になる(graph/nodes/grade.pyの安全側デフォルト)"""
     mock_retrieve_context.return_value = [{"chunk_id": "c1", "title": "T1", "path": "p.md"}]
@@ -49,6 +50,15 @@ def test_build_graph_wires_retrieve_grade_generate_grounded_route(
     )
 
     assert events == [
+        {"event": "node_start", "data": {"node": "rewrite"}},
+        {"event": "rewrite_result", "data": {"applied": False, "query": "raw question"}},
+        {"event": "node_start", "data": {"node": "retrieve"}},
+        {"event": "node_start", "data": {"node": "grade"}},
+        {
+            "event": "route_decided",
+            "data": {"route": "grounded", "kept": 1, "dropped": 0, "top_score": None},
+        },
+        {"event": "node_start", "data": {"node": "generate"}},
         {"event": "citations", "data": [{"n": 1, "title": "T1"}]},
         {"event": "token", "data": "Hello"},
         {"event": "token", "data": " World"},
@@ -94,6 +104,15 @@ def test_build_graph_routes_to_direct_when_no_chunk_meets_theta(
 
     mock_generate_direct_stream.assert_called_once_with("general question")
     assert events == [
+        {"event": "node_start", "data": {"node": "rewrite"}},
+        {"event": "rewrite_result", "data": {"applied": False, "query": "general question"}},
+        {"event": "node_start", "data": {"node": "retrieve"}},
+        {"event": "node_start", "data": {"node": "grade"}},
+        {
+            "event": "route_decided",
+            "data": {"route": "direct", "kept": 0, "dropped": 1, "top_score": 0.1},
+        },
+        {"event": "node_start", "data": {"node": "generate"}},
         {"event": "citations", "data": []},
         {"event": "token", "data": "general answer"},
     ]
