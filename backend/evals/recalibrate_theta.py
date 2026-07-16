@@ -139,7 +139,11 @@ def main() -> None:
     best = grid_search(calibration, step=args.step)
     if best is None:
         print("\nNO-GO: calibration上で「grounded見逃し率<=0.05」を満たすTHETAが存在しません。")
-        result = {"theta": None, "verdict": "NO-GO", "reason": "no theta satisfies constraint"}
+        result: Dict[str, Any] = {
+            "theta": None,
+            "verdict": "NO-GO",
+            "reason": "no theta satisfies constraint",
+        }
         REPORT_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(REPORT_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(result, f, indent=2, ensure_ascii=False)
