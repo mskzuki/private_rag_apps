@@ -62,9 +62,10 @@ def test_generate_answer_stream_with_chunks(mock_get_llm_client):
 
 
 def test_condense_empty_history():
-    # Should skip condense if history is empty
+    # Should skip condense if history is empty. M7 T5: condense() は
+    # (search_query, rewrite_applied) のタプルを返す(スペック rev.3 §4.3 rewrite)
     result = condense("My query", [])
-    assert result == "My query"
+    assert result == ("My query", False)
 
 
 @patch("private_rag_apps.generation.generator.get_llm_client")
@@ -83,7 +84,58 @@ def test_condense_with_history(mock_get_llm_client):
     ]
 
     result = condense("Why is it good?", history)
-    assert result == "Condensed query"
+    assert result == ("Condensed query", True)
+
+    # M7 T5: eval再現性のため temperature=0 を明示指定する(スペック §3.5)
+    _, kwargs = mock_client.responses.create.call_args
+    assert kwargs["temperature"] == 0
+
+
+@patch("private_rag_apps.generation.generator.get_llm_client")
+def test_condense_output_identical_to_query_is_not_flagged_as_rewrite(mock_get_llm_client):
+    """LLMが書き換え不要と判断し元のクエリをそのまま返した場合、rewrite_applied は False
+    (スペック §4.3 rewrite: 「書き換え不要と判定した場合は user_query をそのまま通す」)"""
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.output_text = "Why is it good?"
+    mock_response.usage = None
+    mock_client.responses.create.return_value = mock_response
+    mock_get_llm_client.return_value = mock_client
+
+    history = [
+        {"role": "user", "content": "What is Python?"},
+        {"role": "assistant", "content": "A programming language."},
+    ]
+
+    result = condense("Why is it good?", history)
+    assert result == ("Why is it good?", False)
+
+
+@patch("private_rag_apps.generation.generator.get_client")
+@patch("private_rag_apps.generation.generator.get_llm_client")
+def test_condense_llm_failure_falls_back_to_query(mock_get_llm_client, mock_get_client):
+    """T5 完了条件: フォールバック動作のテスト(LLM呼び出しをmockで失敗させる)。
+    LLM呼び出し失敗時は search_query = user_query で継続し、rewrite_applied は False。
+    警告はLangfuseにも記録する(スペック §4.3 rewrite フォールバック。
+    retrieval/searcher.py::_rerank() の rerank失敗時と同様のWARNING記録パターンを踏襲)"""
+    mock_client = MagicMock()
+    mock_client.responses.create.side_effect = RuntimeError("LLM unavailable")
+    mock_get_llm_client.return_value = mock_client
+    mock_langfuse_client = MagicMock()
+    mock_get_client.return_value = mock_langfuse_client
+
+    history = [
+        {"role": "user", "content": "What is Python?"},
+        {"role": "assistant", "content": "A programming language."},
+    ]
+
+    result = condense("Why is it good?", history)
+
+    assert result == ("Why is it good?", False)
+    mock_langfuse_client.update_current_generation.assert_called_once()
+    _, kwargs = mock_langfuse_client.update_current_generation.call_args
+    assert kwargs["level"] == "WARNING"
+    assert "LLM unavailable" in kwargs["status_message"]
 
 
 @patch("private_rag_apps.generation.llm_client.openai.OpenAI")
@@ -124,7 +176,7 @@ def test_condense_with_history_ollama_disables_reasoning(mock_get_llm_client, mo
     ]
 
     result = condense("Why is it good?", history)
-    assert result == "Condensed query"
+    assert result == ("Condensed query", True)
 
     _, kwargs = mock_client.responses.create.call_args
     assert kwargs["reasoning"] == {"effort": "none"}
@@ -146,7 +198,7 @@ def test_condense_empty_output_falls_back_to_query():
         ]
 
         result = condense("Why is it good?", history)
-        assert result == "Why is it good?"
+        assert result == ("Why is it good?", False)
 
 
 @patch("private_rag_apps.generation.generator.get_llm_client")

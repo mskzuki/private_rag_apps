@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from langfuse import observe, get_client
 from private_rag_apps.core.config import settings
 from private_rag_apps.generation.llm_client import get_llm_client
@@ -8,10 +8,19 @@ from private_rag_apps.prompts.condense import CONDENSE_SYSTEM_PROMPT, build_cond
 
 
 @observe(as_type="generation")
-def condense(query: str, history_messages: List[Dict[str, str]]) -> str:
-    """会話履歴を踏まえ、ユーザーの最新の質問を自己完結したクエリに書き換える"""
+def condense(query: str, history_messages: List[Dict[str, str]]) -> Tuple[str, bool]:
+    """会話履歴を踏まえ、ユーザーの最新の質問を自己完結したクエリに書き換える
+    (M7 rewrite ノードの実体。graph/nodes/rewrite.py はこの関数を呼ぶだけの薄いラッパー。
+    スペック rev.3 §4.3 rewrite)。
+
+    戻り値: (search_query, rewrite_applied) のタプル。rewrite_applied は書き換えが
+    実際に行われたか(= 最終的な search_query が元の query と異なるか、前後空白を除く)
+    を示す。履歴が空、LLM呼び出し失敗、LLM出力が空文字列、LLM出力が元の query と
+    同一のいずれの場合も False（この場合 search_query は query のまま）。
+
+    eval の再現性のため temperature=0 を明示指定する（スペック §3.5）。"""
     if not history_messages:
-        return query
+        return query, False
 
     history_text = "\n".join(
         [
@@ -32,6 +41,7 @@ def condense(query: str, history_messages: List[Dict[str, str]]) -> str:
         response = client.responses.create(
             model=settings.condense_model,
             max_output_tokens=256,
+            temperature=0,
             instructions=CONDENSE_SYSTEM_PROMPT,
             input=prompt,
             **extra_kwargs,
@@ -45,10 +55,18 @@ def condense(query: str, history_messages: List[Dict[str, str]]) -> str:
                 },
                 model=settings.condense_model,
             )
-        return response.output_text.strip() or query
+        search_query = response.output_text.strip() or query
+        rewrite_applied = search_query.strip() != query.strip()
+        return search_query, rewrite_applied
     except Exception as e:
         print(f"Condense error: {e}")
-        return query  # Fallback
+        # 警告をLangfuseにも記録する(retrieval/searcher.py::_rerank()のrerank失敗時と
+        # 同様のWARNING記録パターン。rewriteはbest-effortでありここで全体を落とさない)
+        get_client().update_current_generation(
+            level="WARNING",
+            status_message=f"Condense failed, falling back to original query: {e}",
+        )
+        return query, False  # Fallback
 
 
 def _stream_llm_tokens(*, model: str, instructions: str, input_text: str, max_output_tokens: int):
