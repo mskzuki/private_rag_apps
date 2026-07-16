@@ -208,9 +208,9 @@
 4. stub 構造検証テスト（T3）に新イベントの型・順序を追加
 
 **完了条件:**
-- [ ] 既存イベント型のペイロードに変更がないこと（stub 構造検証テストで担保）
-- [ ] 2 経路それぞれでバッジが正しく表示される
-- [ ] SSE プロトコルドキュメント更新済み
+- [x] 既存イベント型のペイロードに変更がないこと（stub 構造検証テストで担保） → `backend/tests/test_chat_sse_structure.py::test_chat_sse_event_sequence_and_schema_match_pre_graph_capture` で citations/token/done の JSON スキーマが不変であることを確認。`api/main.py` の event_generator は node_start/route_decided/rewrite_result を素通しするだけの追加elifで、既存の token/citations/error 分岐は無変更
+- [x] 2 経路それぞれでバッジが正しく表示される → バックエンド: `backend/tests/test_graph_builder.py`（grounded/direct 双方の event 系列に route_decided を含めて検証）と `backend/tests/test_graph_nodes.py::TestGrade`（route_decided payload の kept/dropped/top_score を grounded/direct 双方で検証）。フロント: `frontend/src/lib/chat-adapter.test.ts` に `route_decided{route:"grounded"}`→`metadata.custom.route==="grounded"`、`route_decided{route:"direct", top_score:null}`→`metadata.custom.route==="direct"` の2テストを追加。`RouteBadge.tsx` は `metadata.custom.route` の値で2状態（コーパス根拠あり/一般知識のみ）を出し分け
+- [x] SSE プロトコルドキュメント更新済み → `docs/specs/m2_streaming_and_history.md` v0.3（§4.1 に「SSE イベント仕様への M7 追加分（後方互換）」を追記、変更履歴に記載）
 
 **スコープ外:** 進捗のリッチ UI（スピナー・ノード別ステータス表示）→ M5 showcase の範疇。補足セクション有無のバッジ表示（route ではないため。必要なら M5 で検討）。
 
