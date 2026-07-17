@@ -106,12 +106,17 @@
 4. ローダーの出力として `loader.py::Document` 相当に `source_type`/`external_id`/`source_url` を加えた内部表現を生成する
 
 **完了条件:**
-- [ ] フォルダ再帰探索（子フォルダ・ページネーション）がモックでテストされている
-- [ ] mimeType判定 + 拡張子救済判定のロジックがテストされている（曖昧な mimeType のケースを含む）
-- [ ] ショートカット・非対応 mimeType のスキップがログ・統計（`ingest_runs.stats` 相当）に残ることを確認
-- [ ] `modifiedTime` 事前フィルタで無変化ファイルのダウンロードが省略されることをテストで確認
-- [ ] `content_hash` の最終判定が既存 `classify()` にそのまま委譲されており、classify() 自体を変更していないことをコードレビューで確認
-- [ ] テストで実 Drive API を叩いていない
+- [x] フォルダ再帰探索（子フォルダ・ページネーション）がモックでテストされている → **達成**（`backend/tests/test_ingestion_gdrive_loader.py::TestRecursiveTraversal`。子フォルダへの再帰・多階層でのパンくず path 蓄積・`list_children` が1フォルダにつき1回のみ呼ばれること（＝ページネーション自体は `GoogleDriveClient.list_children` 側で完結しており、ローダー側で再ページングしないこと）をモックで確認）
+- [x] mimeType判定 + 拡張子救済判定のロジックがテストされている（曖昧な mimeType のケースを含む） → **達成**（`TestMimeTypeFiltering`。対応mimeType（`text/plain`/`text/markdown`/Googleドキュメント）の取り込み、`application/octet-stream` 等の曖昧なmimeTypeが`.md`拡張子で救済されるケース・救済されず非対応のままスキップされるケースの両方を確認）
+- [x] ショートカット・非対応 mimeType のスキップがログ・統計（`ingest_runs.stats` 相当）に残ることを確認 → **達成**（`gdrive_loader.SkippedItem`（`name`/`path`/`reason`）として構造化リストを返し、`load_drive()`が`DriveLoadResult.skipped`に含めて返す。`TestMimeTypeFiltering::test_shortcut_is_skipped_and_recorded_without_resolving_target`・`test_unsupported_mimetype_is_skipped_and_recorded`で確認。あわせて`print()`によるコンソールログ出力も既存`loader.py`の慣習に倣い実装し`capsys`で確認。`ingest_runs.stats`への実際の畳み込みはT4）
+- [x] `modifiedTime` 事前フィルタで無変化ファイルのダウンロードが省略されることをテストで確認 → **達成**（`TestModifiedTimePrefilter`。実DB（`rag_test`）に既存Driveソースを作成し、`modifiedTime`無変化なら`download_content`が呼ばれないこと、変化があれば呼ばれること、新規ファイル・ソフトデリート済みソース（リバイブ判定のため常に再ダウンロードする設計）のケースを含めて確認）
+- [x] `content_hash` の最終判定が既存 `classify()` にそのまま委譲されており、classify() 自体を変更していないことをコードレビューで確認 → **達成**（`ingestion/diff.py`は本タスクで無変更。`gdrive_loader.py`は`classify()`を呼ばず、`content_hash`は`Document.__init__`が本文から自動計算するのみで独自の変更検知判定を行わない。`TestDoesNotReimplementClassify::test_module_source_never_calls_classify`でAST解析により`classify(`呼び出し・`diff`モジュールのimportが存在しないことを自動検証）
+- [x] テストで実 Drive API を叩いていない → **達成**（`test_ingestion_gdrive_loader.py`は`private_rag_apps.ingestion.gdrive_loader.GoogleDriveClient`をまるごと`MagicMock`に差し替えており、ネットワークアクセスは一切発生しない。`make test`で全165件通過）
+
+**実装ノート（2026-07-17 記録）:**
+- ローダーの戻り値は当初案の`tuple[list[Document], list[SkippedItem]]`から、`documents`/`skipped`に加え`found_external_ids: Set[str]`を持つ`DriveLoadResult`（NamedTuple）に拡張した。理由: `modifiedTime`無変化ファイルはダウンロードを省略し`documents`には含めない設計のため、`documents`の`external_id`だけを「走査で見つかったファイル」とみなすと、T4の削除検知（スペック §4.4 手順5）が無変化ファイルを誤って「消えた」と判定しうる。`found_external_ids`は対応mimeType判定を通過した現存する全ファイルのexternal_id集合（`documents`に含まれない無変化ファイルの分も含む）とし、T4が削除検知の材料として使えるようにした。削除判定ロジック自体（安全弁・実際の論理削除）は引き続きT4の責務で、本タスクでは実装していない
+- `loader.py::Document`を3フィールド追加で拡張（`source_type="local_fs"`/`external_id=None`/`source_url=None`のデフォルト値付き）。既存のローカル取り込み呼び出し`Document(path, title, content, updated_at)`は無変更で動作することを既存テスト（`test_ingestion_indexer.py`等）のリグレッションゼロで確認済み。タイトル抽出ロジック（先頭H1優先、なければファイル名）は`loader.py::extract_title()`として切り出し、`load_directory`と`gdrive_loader`の両方から共有する形にした
+- Langfuse `@observe(name="gdrive_scan")`の計装、Drive APIレート制限（429）への指数バックオフ、個別ファイルのダウンロード失敗時のスキップ処理は、スペック §4.9/§6・タスクリストT7の責務として本タスクでは実装していない（`gdrive_loader.py`内で`list_children`/`download_content`の例外はそのまま呼び出し元に伝播する設計とした）
 
 **スコープ外:** indexer への統合・チャンキング以降のパイプライン（T4）。
 
