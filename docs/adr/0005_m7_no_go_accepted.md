@@ -1,6 +1,6 @@
 # ADR 0005: T4 grade閾値のNO-GO判定を受け入れる
 
-- Status: Accepted
+- Status: **Superseded by `docs/adr/0006_m7_holdout_partial_reretry_go.md`（2026-07-17。holdoutのdirect誤り4件中2件（`g014`,`g037`）をVoyage APIに再取得したところ実際は誤判定だったと判明し、holdout direct誤りが4/18→2/18に減少、判定がNO-GO→GOに反転したため）。本文（Context/Decision/Consequences）はNO-GO受理を決定した時点の記録として書き換えず保持する。**
 - Date: 2026-07-16
 - 関連: `docs/adr/0001_m7_theta_threshold.md`（THETA決定と、その後のNO-GOへの反転）、`docs/specs/m7_adaptive_routing.md`（rev.3 §7.4 LLM grader昇格判断）
 

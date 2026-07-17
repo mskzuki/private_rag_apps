@@ -73,3 +73,7 @@ holdoutのdirect誤り4件（`g014`, `g037`, `a019`, `a028`）はいずれも該
 - `make eval-routing`のholdout判定は**NO-GO**（direct誤り4/18が基準を1件超過）
 - ただし上記の通り、この超過分はVoyageレート制限によるデータ欠落が主因である可能性が高く、額面通りの「grade精度の問題」ではない可能性がある
 - 本件の最終判断（欠落データの再取得を試みるか、NO-GOをそのまま受け入れM8のLLM grader検討[スペック§7.4]に進むか）はコントローラーに委ねる
+
+## 追記（2026-07-17）
+
+ユーザー指示により、holdoutのdirect誤り4件を含む未検証None件をVoyage APIに再取得した結果、**holdout direct誤りが4/18→2/18に減少し、判定はGOに反転した**（THETA=0.56は変更なし）。`g014`/`g037`はVoyage失敗の推定通り誤判定だったが、`a019`/`a028`は実スコアが取れた上で依然direct誤り（正当なグレーゾーン境界値）であることが判明した。詳細は `docs/adr/0006_m7_holdout_partial_reretry_go.md` を参照（ADR 0005はSuperseded）。

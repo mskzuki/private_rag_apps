@@ -153,7 +153,7 @@
 7. 補足書式検証: e2e eval の複合質問 5 件で、context 外の内容が補足セクションに分離されていることを判定
 
 **完了条件:**
-- [x] ~~`make eval-routing`（holdout）: grounded 見逃し ≤ 1 件、direct 誤り ≤ 3 件（T2 の GO 判定の再現）~~ → **NO-GO**（grounded見逃し0/21・direct誤り4/18で基準を1件超過。calibrationのみでの正規の再キャリブレーションでもTHETA=0.56が最適と再確認、holdout結果は再現。**未解決事項:** direct誤り4件は全件Voyage rerank失敗によるフォールバック起因の可能性が高いとT4レビューで独立検証されたが、22件の再取得は実施していない（コスト対効果を理由にユーザー判断で見送り）。ユーザー承認によりNO-GOを受け入れ、スペック§7.4に従いLLM graderスペックを別途起票する。詳細: `docs/adr/0001_m7_theta_threshold.md`追記部分, `docs/adr/0005_m7_no_go_accepted.md`）
+- [x] ~~`make eval-routing`（holdout）: grounded 見逃し ≤ 1 件、direct 誤り ≤ 3 件（T2 の GO 判定の再現）~~ → **NO-GO**（grounded見逃し0/21・direct誤り4/18で基準を1件超過。calibrationのみでの正規の再キャリブレーションでもTHETA=0.56が最適と再確認、holdout結果は再現。**未解決事項:** direct誤り4件は全件Voyage rerank失敗によるフォールバック起因の可能性が高いとT4レビューで独立検証されたが、22件の再取得は実施していない（コスト対効果を理由にユーザー判断で見送り）。ユーザー承認によりNO-GOを受け入れ、スペック§7.4に従いLLM graderスペックを別途起票する。詳細: `docs/adr/0001_m7_theta_threshold.md`追記部分, `docs/adr/0005_m7_no_go_accepted.md`） → **2026-07-17追記: GOへ反転。** ユーザー指示によりdirect誤り4件を含むholdout未検証None件をVoyage APIに再取得した結果、`g014`/`g037`は推定通りVoyage失敗による誤判定と判明し訂正、`a019`/`a028`は実スコア取得の上で正当なグレーゾーン誤判定と判明。holdout direct誤りは4/18→2/18（基準≤3）に減少し**GO**。詳細: `docs/adr/0006_m7_holdout_partial_reretry_go.md`（ADR 0005はSuperseded）
 - [x] direct groundedness: 人手裁定後の真の違反 0
 - [x] ~~補足書式: 複合質問 5/5 で分離が確認できる（判定結果の人手確認込み）~~ → **3/5に留まる**（プロンプト調整を1回試行したが悪化したため撤回。既知の制約として記録し、構造化出力化をM7追補スペックとして提案。タスクリスト実装ノート通りの扱い）
 - [x] 2 経路 + 補足発生ケースの手動スモークテスト（grounded 2 件 / direct 2 件 / 複合 1 件、SSE 経由）
@@ -232,16 +232,16 @@
 - [x] Langfuse 上で route 別のフィルタリング・レイテンシ比較ができることを確認 → `route`, `theta`, `kept_count`, `top_score`（grade ノード）・`rewrite_applied`（rewrite ノード）を `propagate_attributes(metadata={...})` で trace レベル metadata として記録するよう実装（`backend/src/private_rag_apps/graph/nodes/grade.py`, `.../rewrite.py`）。この worktree の `backend/.env` には有効な Langfuse 認証情報が設定されていない（プレースホルダーのまま）ため、Langfuse UI 上での実フィルタリング・レイテンシ比較の実地確認は未実施。単体テストで metadata の呼び出し引数を検証済み（`backend/tests/test_graph_nodes.py`）
 - [x] direct 経路の trace がダッシュボードで欠損扱いにならないことを確認 → グラフの配線（`backend/src/private_rag_apps/graph/builder.py`）上、`retrieve`/`grade` は grounded/direct いずれの経路でも必ず実行され、両経路とも同じ `generate` ノードに合流するため構造的に欠落しない。この構造上の保証をコードレビューで確認済み。実 Langfuse UI 上での目視確認は上記と同じ理由（認証情報未設定）で未実施
 - [x] スペックの Status が Accepted に更新され、§10 が解消または明示的に持ち越し記録されている → `docs/specs/m7_adaptive_routing.md` rev.4 で Status を Accepted に更新し、§10 の未決事項3件（N=5 のまま不変・レイテンシ超過はM8持ち越し／補足書式の最終文言／judgeのモデル・プロンプト所在）をすべて解消・記録した
-- [x] `make eval-routing` 全通過の最終確認（`make eval`はADR 0004により対象外） → **文言を実績と整合させて修正（本タスクの成果物）。** 正しくは「`make eval-routing` が実行可能であることの最終確認」。`make eval`はADR 0004により対象外。`make eval-routing`自体の合否基準（holdout: grounded見逃し≤1件・direct誤り≤3件）はT4で**NO-GO**（grounded見逃し0/21・direct誤り4/18）となり、ADR 0005によりユーザーがこのNO-GOを受理済みのため、再合格を待たない。`--stats-only`（Voyage/OpenAI呼び出し無し、既存結果の再集計のみ）で実行可能性を再確認し、ADR 0005記載の数値（holdout: grounded_miss=0/21, direct_wrong=4/18, id=[g014, g037, a019, a028]）と完全一致することを確認した
+- [x] `make eval-routing` 全通過の最終確認（`make eval`はADR 0004により対象外） → **文言を実績と整合させて修正（本タスクの成果物）。** 正しくは「`make eval-routing` が実行可能であることの最終確認」。`make eval`はADR 0004により対象外。`make eval-routing`自体の合否基準（holdout: grounded見逃し≤1件・direct誤り≤3件）はT4で**NO-GO**（grounded見逃し0/21・direct誤り4/18）となり、ADR 0005によりユーザーがこのNO-GOを受理済みのため、再合格を待たない。`--stats-only`（Voyage/OpenAI呼び出し無し、既存結果の再集計のみ）で実行可能性を再確認し、ADR 0005記載の数値（holdout: grounded_miss=0/21, direct_wrong=4/18, id=[g014, g037, a019, a028]）と完全一致することを確認した → **2026-07-17追記: その後ユーザー指示により該当4件+他のholdout未検証None件を再取得し、holdout direct誤り4/18→2/18で正式にGOへ反転した（詳細: `docs/adr/0006_m7_holdout_partial_reretry_go.md`）。「再合格を待たない」という本行の前提はもはや適用対象ではないが、修正当時の判断記録として保持する**
 
 ---
 
 ## 全体の完了定義（M7 クローズ条件）
 
-- [x] T0–T7 の全完了条件を満たす（T4のNO-GO・補足書式3/5はADR 0004/0005・タスクリスト実装ノート通り既知の制約として受理済み。他は達成）
-- [x] `make eval-routing` が実行可能であること。**合否自体は以下の通り実績を確定値として受理し、再合格を待たない**（文言修正: 本タスクの成果物。旧文言「`make eval-routing` 通過（… ）」はT2完了時点の楽観的な記述であり、T4/T5で判明した事実と矛盾していたため修正した）:
+- [x] T0–T7 の全完了条件を満たす（補足書式3/5はADR 0004・タスクリスト実装ノート通り既知の制約として受理済み。direct誤りはT4時点でNO-GOだったが2026-07-17の再取得でGOへ反転（下記）。他は達成）
+- [x] `make eval-routing` が実行可能であること。**合否実績は以下の通り**（文言修正: 本タスクの成果物。旧文言「`make eval-routing` 通過（… ）」はT2完了時点の楽観的な記述であり、T4/T5で判明した事実と矛盾していたため修正した）:
   - grounded 見逃し: 0/21（基準 ≤ 1 件を達成）
-  - direct 誤り: 4/18（基準 ≤ 3 件を超過。**NO-GO**。ADR 0005によりユーザーが受理済み。原因はVoyage rerank一時失敗時の安全側フォールバックと一致することが判明したが、再取得は行わず判定をそのまま採用）
+  - direct 誤り: **2/18**（基準 ≤ 3 件を達成。**GO**。T4時点では4/18でNO-GOだったが、2026-07-17にユーザー指示で該当4件を含むholdout未検証None件をVoyage APIに再取得した結果、`g014`/`g037`は誤判定と判明し訂正、`a019`(0.707)/`a028`(0.574)は実スコア取得の上で正当なグレーゾーン誤判定と判明。詳細: `docs/adr/0006_m7_holdout_partial_reretry_go.md`。ADR 0005はSuperseded）
   - direct groundedness: 人手裁定後の真の違反 0（達成）
   - 補足書式: 3/5（**未達**。既知の制約として受理。構造化出力化をM7追補スペックとして提案）
   - 既存 e2e（`make eval`）非劣化は ADR 0004 により M7 の完了条件から除外（対象外）
