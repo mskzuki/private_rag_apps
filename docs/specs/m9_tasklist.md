@@ -168,13 +168,13 @@
 5. `Makefile` に `worker` ターゲットを追加する（`cd backend && uv run arq private_rag_apps.worker.settings.WorkerSettings`。ホスト上で直接起動、専用 docker イメージは作らない）
 
 **完了条件:**
-- [ ] `docker compose up` で `redis` が問題なく起動する
-- [ ] `POST /api/ingest/gdrive` が `ingest_runs` の `running` 行を同期作成してから応答を返すことをテストで確認
-- [ ] ローカルで起動した ARQ worker（実 Redis、モック Drive クライアント）がジョブを実際に消費し `execute_gdrive_ingestion()` を呼ぶことを統合テストで確認
-- [ ] `INGEST_GDRIVE_JOB_MAX_TRIES` 回失敗後に `ingest_runs.status='error'` が記録されることをテストで確認
-- [ ] グローバル排他ロックにより、ローカル取り込み実行中は Drive 取り込みジョブが（逆方向も）起動できないことをテストで確認
-- [ ] `GET /api/ingest/runs` の応答形式（既存 API 契約）が変更されていないことを確認
-- [ ] `worker/tasks.py` がジョブ関数のみでロジックを持たないことをコードレビューで確認（AGENTS.md §3 準拠）
+- [x] `docker compose up` で `redis` が問題なく起動する
+- [x] `POST /api/ingest/gdrive` が `ingest_runs` の `running` 行を同期作成してから応答を返すことをテストで確認
+- [x] ローカルで起動した ARQ worker（実 Redis、モック Drive クライアント）がジョブを実際に消費し `execute_gdrive_ingestion()` を呼ぶことを統合テストで確認
+- [x] `INGEST_GDRIVE_JOB_MAX_TRIES` 回失敗後に `ingest_runs.status='error'` が記録されることをテストで確認
+- [x] グローバル排他ロックにより、ローカル取り込み実行中は Drive 取り込みジョブが（逆方向も）起動できないことをテストで確認
+- [x] `GET /api/ingest/runs` の応答形式（既存 API 契約）が変更されていないことを確認
+- [x] `worker/tasks.py` がジョブ関数のみでロジックを持たないことをコードレビューで確認（AGENTS.md §3 準拠）
 
 **スコープ外:** citation 連携（T6）。定期自動同期・スケジューリング（スコープ外、スペック §1）。
 
