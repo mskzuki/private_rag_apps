@@ -247,6 +247,9 @@ def _format_chunks(
                 "metadata": chunk.metadata_,
                 "title": source.title,
                 "path": source.path,
+                "source_type": source.source_type,
+                "external_id": source.external_id,
+                "source_url": source.source_url,
             }
         )
     return context_chunks

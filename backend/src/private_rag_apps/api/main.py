@@ -61,6 +61,8 @@ class SourceListItem(TypedDict):
     chunk_count: int
     updated_at: datetime
     deleted_at: Optional[datetime]
+    source_type: str
+    source_url: Optional[str]
 
 class TriggerIngestResult(TypedDict):
     id: str
@@ -276,6 +278,8 @@ def list_sources(
             "chunk_count": chunk_count,
             "updated_at": source.updated_at,
             "deleted_at": source.deleted_at,
+            "source_type": source.source_type,
+            "source_url": source.source_url,
         }
         for source, chunk_count in rows
     ]

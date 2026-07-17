@@ -61,6 +61,83 @@ def test_generate_answer_stream_with_chunks(mock_get_llm_client):
     assert events[3]["data"] == "World"
 
 
+@patch("private_rag_apps.generation.generator.get_llm_client")
+def test_generate_answer_stream_citation_source_type_defaults_to_local_fs_when_missing(
+    mock_get_llm_client,
+):
+    """M9 T6: _format_chunks を経由していないchunk dict（source_type等のキーを
+    持たない旧形式）でも citations 組み立てがKeyErrorせず、Source/Documentモデル
+    自身の既定値と同じ 'local_fs' にフォールバックすることを確認する（スペック §4.7）"""
+    mock_get_llm_client.return_value = _stub_llm_client()
+
+    chunks = [
+        {"title": "T1", "path": "p1.md", "chunk_id": "c1", "content": "mock text"},
+    ]
+
+    events = list(generate_answer_stream("query", chunks))
+
+    citation = events[0]["data"][0]
+    assert citation["source_type"] == "local_fs"
+    assert citation["source_id"] is None
+    assert citation["source_url"] is None
+    # 既存5フィールドは不変
+    assert citation["n"] == 1
+    assert citation["title"] == "T1"
+    assert citation["path"] == "p1.md"
+    assert citation["chunk_id"] == "c1"
+
+
+@patch("private_rag_apps.generation.generator.get_llm_client")
+def test_generate_answer_stream_citation_carries_drive_source_fields(mock_get_llm_client):
+    """M9 T6: _format_chunks が付与した source_type='google_drive'/external_id/source_url
+    が citations にそのまま反映されることを確認する（external_idはsource_idという
+    キー名にリネームされて渡る。スペック §4.7）"""
+    mock_get_llm_client.return_value = _stub_llm_client()
+
+    chunks = [
+        {
+            "title": "Drive Doc",
+            "path": "Notes/drive-doc.md",
+            "chunk_id": "c1",
+            "content": "mock text",
+            "source_type": "google_drive",
+            "external_id": "drv-abc123",
+            "source_url": "https://drive.google.com/file/d/drv-abc123/view",
+        },
+    ]
+
+    events = list(generate_answer_stream("query", chunks))
+
+    citation = events[0]["data"][0]
+    assert citation["source_type"] == "google_drive"
+    assert citation["source_id"] == "drv-abc123"
+    assert citation["source_url"] == "https://drive.google.com/file/d/drv-abc123/view"
+    # 既存5フィールドは不変
+    assert citation["title"] == "Drive Doc"
+    assert citation["path"] == "Notes/drive-doc.md"
+
+
+def _stub_llm_client() -> MagicMock:
+    """OpenAI Responses API互換のstub（固定のtoken列を流すのみ）。
+    citations組み立てのテストで本文トークンの中身自体は検証対象外のため、
+    test_chat_sse_structure.py::_make_stub_llm_client と同型の最小stub"""
+    mock_client = MagicMock()
+    event = MagicMock()
+    event.type = "response.output_text.delta"
+    event.delta = "Hello"
+
+    final_response = MagicMock()
+    final_response.usage.input_tokens = 10
+    final_response.usage.output_tokens = 5
+
+    completed_event = MagicMock()
+    completed_event.type = "response.completed"
+    completed_event.response = final_response
+
+    mock_client.responses.create.return_value = [event, completed_event]
+    return mock_client
+
+
 def test_condense_empty_history():
     # Should skip condense if history is empty. M7 T5: condense() は
     # (search_query, rewrite_applied) のタプルを返す(スペック rev.3 §4.3 rewrite)

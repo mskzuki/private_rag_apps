@@ -1,5 +1,6 @@
 """Unit tests for RRF score calculation logic and rerank fallback."""
 
+import uuid
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -193,3 +194,57 @@ class TestRerankFallback:
                 result = _rerank("test query", chunks, top_k=3)
 
         assert all("rerank_score" not in c for c in result)
+
+
+class TestFormatChunks:
+    """M9 T6: _format_chunks が Source から source_type/external_id/source_url を
+    チャンクdictに転記することを検証する（citation chain の入口。スペック §4.7）。
+    DBを介さずChunk/Sourceの属性アクセスのみを見るため、実オブジェクトの代わりに
+    SimpleNamespaceでフェイクする（このファイルの他テストと同様、DB不要な純粋ロジックとして扱う）"""
+
+    def test_local_source_maps_default_source_type_and_null_external_fields(self):
+        from types import SimpleNamespace
+
+        from private_rag_apps.retrieval.searcher import _format_chunks
+
+        chunk_id = uuid.uuid4()
+        chunk = SimpleNamespace(id=chunk_id, content="local content", metadata_={"heading": "h1"})
+        source = SimpleNamespace(
+            title="Local Doc",
+            path="local/doc.md",
+            source_type="local_fs",
+            external_id=None,
+            source_url=None,
+        )
+
+        result = _format_chunks([(chunk, source)])
+
+        assert len(result) == 1
+        assert result[0]["chunk_id"] == str(chunk_id)
+        assert result[0]["title"] == "Local Doc"
+        assert result[0]["path"] == "local/doc.md"
+        assert result[0]["source_type"] == "local_fs"
+        assert result[0]["external_id"] is None
+        assert result[0]["source_url"] is None
+
+    def test_drive_source_maps_source_type_external_id_and_source_url(self):
+        from types import SimpleNamespace
+
+        from private_rag_apps.retrieval.searcher import _format_chunks
+
+        chunk_id = uuid.uuid4()
+        chunk = SimpleNamespace(id=chunk_id, content="drive content", metadata_={"heading": "h2"})
+        source = SimpleNamespace(
+            title="Drive Doc",
+            path="Notes/drive-doc.md",
+            source_type="google_drive",
+            external_id="drv-abc123",
+            source_url="https://drive.google.com/file/d/drv-abc123/view",
+        )
+
+        result = _format_chunks([(chunk, source)])
+
+        assert len(result) == 1
+        assert result[0]["source_type"] == "google_drive"
+        assert result[0]["external_id"] == "drv-abc123"
+        assert result[0]["source_url"] == "https://drive.google.com/file/d/drv-abc123/view"
