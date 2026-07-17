@@ -8,7 +8,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from private_rag_apps.core.db import SessionLocal
-from private_rag_apps.ingestion.gdrive_client import GOOGLE_DOC_MIME_TYPE, DriveFile
+from private_rag_apps.ingestion.gdrive_client import (
+    GOOGLE_DOC_MIME_TYPE,
+    DriveFile,
+    GoogleDriveAccessError,
+)
 from private_rag_apps.ingestion.gdrive_loader import load_drive
 import private_rag_apps.ingestion.gdrive_loader as gdrive_loader_module
 from private_rag_apps.models.rag import Source
@@ -387,6 +391,143 @@ class TestDocumentAssembly:
         assert doc.source_url == "https://drive.google.com/file/d/file-1/view"
         assert doc.title == "My Title"
         assert doc.content_hash  # sha256はDocument.__init__が自動計算する
+
+
+class TestIndividualFileDownloadFailure:
+    """個別ファイルのダウンロード失敗時はスキップして走査を継続することを確認する
+    （スペック §4.9「個別ファイルのダウンロード失敗」行。m9_tasklist.md T7 作業項目3）。
+
+    RED（このfix以前の実装）: `_walk()`内の`client.download_content(child)`に例外処理が
+    一切無く、1件のダウンロード失敗（GoogleDriveAccessError等）がそのまま`_walk`→`load_drive`
+    →`execute_gdrive_ingestion`まで伝播し、他に成功していたはずの全ファイルを含め
+    取り込みRun全体を中断させていた。このクラスのテストは、fix適用前は
+    `client.download_content`のside_effectで送出した例外がそのまま`load_drive()`から
+    再送出され、必ずfailする。
+    """
+
+    def test_download_failure_is_skipped_and_recorded_in_failed_while_scan_continues(self, db):
+        client = MagicMock()
+        bad_file = _drive_file("bad-1", "bad.txt", "text/plain", modified_time=None)
+        ok_file = _drive_file("ok-1", "good.txt", "text/plain", modified_time=None)
+        client.list_children.return_value = [bad_file, ok_file]
+
+        def download_content(file: DriveFile) -> bytes:
+            if file.id == "bad-1":
+                raise GoogleDriveAccessError("boom: transient network failure")
+            return b"good content"
+
+        client.download_content.side_effect = download_content
+
+        with patch("private_rag_apps.ingestion.gdrive_loader.GoogleDriveClient", return_value=client):
+            result = load_drive(db, "root-folder")
+
+        # 失敗したファイルはdocumentsに含まれず、成功したファイルは含まれる（走査継続の証明）
+        assert [d.external_id for d in result.documents] == ["ok-1"]
+        assert len(result.failed) == 1
+        assert result.failed[0].name == "bad.txt"
+        assert result.failed[0].path == "bad.txt"
+        assert "boom" in result.failed[0].reason
+        # 失敗したファイルもDrive上には現存する（ダウンロードに失敗しただけ）ため、
+        # 削除検知を誤らせないようfound_external_idsには含まれ続ける
+        assert result.found_external_ids == {"bad-1", "ok-1"}
+
+    def test_download_failure_in_one_folder_does_not_abort_scan_of_sibling_folder(self, db):
+        """フォルダ跨ぎでも継続することを確認する（1ファイルの失敗が「走査全体」を中断させない
+        ことの、より強い証明）。"""
+        client = MagicMock()
+        subfolder = _drive_file("sub-1", "SubDir", FOLDER_MIME_TYPE)
+        bad_file = _drive_file("bad-1", "bad.txt", "text/plain", modified_time=None)
+        sibling_file = _drive_file("sibling-1", "sibling.txt", "text/plain", modified_time=None)
+
+        def list_children(folder_id: str):
+            if folder_id == "root-folder":
+                return [bad_file, subfolder]
+            if folder_id == "sub-1":
+                return [sibling_file]
+            raise AssertionError(f"unexpected folder_id {folder_id}")
+
+        client.list_children.side_effect = list_children
+
+        def download_content(file: DriveFile) -> bytes:
+            if file.id == "bad-1":
+                raise GoogleDriveAccessError("boom")
+            return b"sibling content"
+
+        client.download_content.side_effect = download_content
+
+        with patch("private_rag_apps.ingestion.gdrive_loader.GoogleDriveClient", return_value=client):
+            result = load_drive(db, "root-folder")
+
+        assert {d.external_id for d in result.documents} == {"sibling-1"}
+        assert len(result.failed) == 1
+        assert result.failed[0].name == "bad.txt"
+        assert client.list_children.call_count == 2  # サブフォルダへの再帰も継続している
+
+    def test_non_utf8_content_is_treated_as_download_failure(self, db):
+        """デコード失敗（非UTF-8コンテンツ）もダウンロード失敗と同様にスキップして継続する"""
+        client = MagicMock()
+        file = _drive_file("bad-decode", "binaryish.txt", "text/plain", modified_time=None)
+        client.list_children.return_value = [file]
+        client.download_content.return_value = b"\xff\xfe not valid utf-8"
+
+        with patch("private_rag_apps.ingestion.gdrive_loader.GoogleDriveClient", return_value=client):
+            result = load_drive(db, "root-folder")
+
+        assert result.documents == []
+        assert len(result.failed) == 1
+        assert result.failed[0].name == "binaryish.txt"
+
+    def test_download_failure_is_logged(self, db, capsys):
+        client = MagicMock()
+        file = _drive_file("bad-1", "bad.txt", "text/plain", modified_time=None)
+        client.list_children.return_value = [file]
+        client.download_content.side_effect = GoogleDriveAccessError("boom")
+
+        with patch("private_rag_apps.ingestion.gdrive_loader.GoogleDriveClient", return_value=client):
+            load_drive(db, "root-folder")
+
+        captured = capsys.readouterr()
+        assert "Failed to download bad.txt" in captured.out
+
+
+class TestGdriveScanObservability:
+    """`@observe(name="gdrive_scan")` spanのメタデータ計装のテスト（T7 作業項目4）。
+    実Langfuse UIでの確認は環境依存のため必須としないが（m9_tasklist.md T7完了条件）、
+    `gdrive_loader.get_client()`をモックしてspanメタデータの内容自体はコードレベルで検証する。
+    """
+
+    def test_load_drive_records_scan_counts_on_current_span(self, db):
+        client = MagicMock()
+        ok_file = _drive_file("f1", "a.txt", "text/plain", modified_time=None)
+        skip_file = _drive_file("f2", "photo.png", "image/png", modified_time=None)
+        bad_file = _drive_file("f3", "bad.txt", "text/plain", modified_time=None)
+        client.list_children.return_value = [ok_file, skip_file, bad_file]
+
+        def download_content(file: DriveFile) -> bytes:
+            if file.id == "f3":
+                raise GoogleDriveAccessError("boom")
+            return b"ok content"
+
+        client.download_content.side_effect = download_content
+
+        with (
+            patch("private_rag_apps.ingestion.gdrive_loader.GoogleDriveClient", return_value=client),
+            patch("private_rag_apps.ingestion.gdrive_loader.get_client") as mock_get_client,
+        ):
+            mock_span_client = MagicMock()
+            mock_get_client.return_value = mock_span_client
+            result = load_drive(db, "root-folder")
+
+        mock_span_client.update_current_span.assert_called_once()
+        metadata = mock_span_client.update_current_span.call_args.kwargs["metadata"]
+        assert metadata["documents_found"] == 1
+        assert metadata["skipped"] == 1
+        assert metadata["failed"] == 1
+        assert metadata["list_calls"] == 1
+        # ダウンロード試行はf1(成功)・f3(失敗)の2件。f2はmimeType非対応でダウンロード自体
+        # 試みられていない
+        assert metadata["download_calls"] == 2
+        assert len(result.documents) == 1
 
 
 class TestDoesNotReimplementClassify:

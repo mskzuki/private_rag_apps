@@ -191,7 +191,7 @@ class GoogleDriveClient:
                         pageToken=page_token,
                         pageSize=_PAGE_SIZE,
                     )
-                    .execute()
+                    .execute(num_retries=settings.drive_api_max_retries)
                 )
             except HttpError as e:
                 status = _http_error_status(e)
@@ -221,7 +221,7 @@ class GoogleDriveClient:
                 request = self._service.files().export(fileId=file.id, mimeType=_EXPORT_MIME_TYPE)
             else:
                 request = self._service.files().get_media(fileId=file.id)
-            content: Any = request.execute()
+            content: Any = request.execute(num_retries=settings.drive_api_max_retries)
         except HttpError as e:
             raise GoogleDriveAccessError(
                 f"Google Driveファイル '{file.name}' (id={file.id}) の取得に失敗しました: {e}"

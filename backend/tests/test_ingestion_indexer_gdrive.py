@@ -1,4 +1,4 @@
-"""ingestion/indexer.py の Google Drive 統合（M9 T4）テスト。
+"""ingestion/indexer.py の Google Drive 統合（M9 T4/T7）テスト。
 
 観点（m9_tasklist.md T4 完了条件）:
 1. execute_gdrive_ingestion() がチャンキング以降で execute_ingestion() と共通のコードパスを通る
@@ -10,6 +10,13 @@
 4. `make ingest-gdrive` 相当のCLIコードパスがモック化したDriveクライアントに対して
    一気通貫で動作する（TestCliEndToEnd）
 5. skipped（ショートカット/非対応mimeType）が run.stats に畳み込まれる（TestSkippedItemsInStats）
+
+観点（m9_tasklist.md T7 完了条件、本ファイルに追加分）:
+6. gdrive_loaderが検知したダウンロード失敗（DriveLoadResult.failed）が
+   run.stats["failed_files"]へ畳み込まれる（TestFailedDownloadsFoldedIntoStats）
+7. フォルダ未共有／認証失敗（gdrive_client.py・T2で実装済み）が execute_gdrive_ingestion()の
+   catch-all経由でrun.errorへ、サービスアカウントのメールアドレス・共有手順付きで
+   end-to-endで記録されることの確認（TestFolderAccessErrorSurfacesInRunError）
 
 Driveクライアントは gdrive_loader.GoogleDriveClient の境界でモックする（T2/T3のテストと同じ
 パターン）。実際のDrive APIは一切呼ばない。DB側はモックせず、make test 規約の実DB（rag_test）を
@@ -26,9 +33,10 @@ from sqlalchemy import or_
 
 from private_rag_apps.core.config import settings
 from private_rag_apps.core.db import SessionLocal
-from private_rag_apps.ingestion.gdrive_client import DriveFile
+from private_rag_apps.ingestion.concurrency import start_run
+from private_rag_apps.ingestion.gdrive_client import DriveFile, GoogleDriveAccessError
 from private_rag_apps.ingestion.gdrive_loader import DriveLoadResult, SkippedItem
-from private_rag_apps.ingestion.indexer import run_gdrive_ingestion, run_ingestion
+from private_rag_apps.ingestion.indexer import execute_gdrive_ingestion, run_gdrive_ingestion, run_ingestion
 from private_rag_apps.ingestion.loader import Document
 from private_rag_apps.models.rag import Chunk, IngestRun, Source
 
@@ -110,7 +118,9 @@ class TestSharedChunkingPath:
             external_id=external_id,
             source_url="https://drive.google.com/file/d/abc/view",
         )
-        drive_result = DriveLoadResult(documents=[drive_doc], skipped=[], found_external_ids={external_id})
+        drive_result = DriveLoadResult(
+            documents=[drive_doc], skipped=[], failed=[], found_external_ids={external_id}
+        )
         run_ids: list = []
         try:
             with (
@@ -158,7 +168,9 @@ class TestSourceTypeScopedMatching:
                 external_id=external_id,
                 source_url="https://drive.google.com/file/d/dup/view",
             )
-            drive_result = DriveLoadResult(documents=[drive_doc], skipped=[], found_external_ids={external_id})
+            drive_result = DriveLoadResult(
+                documents=[drive_doc], skipped=[], failed=[], found_external_ids={external_id}
+            )
             with (
                 patch("private_rag_apps.ingestion.indexer.load_drive", return_value=drive_result),
                 patch("private_rag_apps.ingestion.indexer.voyageai") as mock_voyage2,
@@ -199,7 +211,10 @@ class TestSourceTypeScopedMatching:
         run_ids: list = []
         try:
             first_result = DriveLoadResult(
-                documents=[_doc("# V1\n\noriginal drive content")], skipped=[], found_external_ids={external_id}
+                documents=[_doc("# V1\n\noriginal drive content")],
+                skipped=[],
+                failed=[],
+                found_external_ids={external_id},
             )
             with (
                 patch("private_rag_apps.ingestion.indexer.load_drive", return_value=first_result),
@@ -216,6 +231,7 @@ class TestSourceTypeScopedMatching:
             second_result = DriveLoadResult(
                 documents=[_doc("# V2\n\ncompletely different drive content now", path="Notes/new-name.md")],
                 skipped=[],
+                failed=[],
                 found_external_ids={external_id},
             )
             with (
@@ -312,7 +328,9 @@ class TestDeletionPhaseSourceTypeIsolation:
 
             # Driveの走査結果は drive_keep_id のみを見つけた、という状況を模擬する
             # （drive_gone_id は見つからなかった = 消えた）
-            drive_result = DriveLoadResult(documents=[], skipped=[], found_external_ids={drive_keep_id})
+            drive_result = DriveLoadResult(
+                documents=[], skipped=[], failed=[], found_external_ids={drive_keep_id}
+            )
             with (
                 patch("private_rag_apps.ingestion.indexer.load_drive", return_value=drive_result),
                 patch("private_rag_apps.ingestion.indexer.voyageai") as mock_voyage2,
@@ -368,7 +386,9 @@ class TestDeletionPhaseSourceTypeIsolation:
                 )
             db.commit()
 
-            drive_result = DriveLoadResult(documents=[], skipped=[], found_external_ids={drive_keep_id})
+            drive_result = DriveLoadResult(
+                documents=[], skipped=[], failed=[], found_external_ids={drive_keep_id}
+            )
             with (
                 patch("private_rag_apps.ingestion.indexer.load_drive", return_value=drive_result),
                 patch("private_rag_apps.ingestion.indexer.voyageai") as mock_voyage2,
@@ -396,7 +416,7 @@ class TestSkippedItemsInStats:
             SkippedItem(name="link.gshortcut", path="link.gshortcut", reason="ショートカットは非対応です"),
             SkippedItem(name="image.png", path="sub/image.png", reason="非対応のmimeTypeです"),
         ]
-        drive_result = DriveLoadResult(documents=[], skipped=skipped, found_external_ids=set())
+        drive_result = DriveLoadResult(documents=[], skipped=skipped, failed=[], found_external_ids=set())
         run_ids: list = []
         try:
             with patch("private_rag_apps.ingestion.indexer.load_drive", return_value=drive_result):
@@ -410,6 +430,102 @@ class TestSkippedItemsInStats:
             assert skipped_items[1]["reason"] == "非対応のmimeTypeです"
             # skipped_items追加は既存のskippedキー（classify()のSKIP件数）の意味を変えない
             assert run.stats["skipped"] == 0
+        finally:
+            _cleanup(db, run_ids=run_ids)
+
+
+class TestFailedDownloadsFoldedIntoStats:
+    """gdrive_loader.load_drive()が検知した個別ファイルのダウンロード失敗
+    （DriveLoadResult.failed）が、run.stats["failed_files"]へ畳み込まれることを確認する
+    （スペック §4.9「個別ファイルのダウンロード失敗」行。m9_tasklist.md T7 作業項目3・完了条件1）。
+
+    RED（fix以前）: DriveLoadResultにfailedフィールド自体が存在せず、
+    execute_gdrive_ingestion()もそれをstats["failed_files"]へ畳み込むコードを持たなかった。
+    走査自体はgdrive_loader.pyのfix（TestIndividualFileDownloadFailure）で継続できるように
+    なったが、失敗の記録が`ingest_runs.stats.failed_files`に現れるところまでを
+    indexer.py側で確認するのが本テストの責務。"""
+
+    def test_failed_downloads_are_folded_into_stats_failed_files_and_run_completes(self, db):
+        ok_doc = Document(
+            path="ok.md",
+            title="OK",
+            content="# OK\n\nsucceeded content",
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
+            source_type="google_drive",
+            external_id="ok-1",
+            source_url=None,
+        )
+        failed_items = [
+            SkippedItem(
+                name="bad.txt",
+                path="bad.txt",
+                reason="ダウンロードに失敗したためスキップしました: boom",
+            )
+        ]
+        drive_result = DriveLoadResult(
+            documents=[ok_doc], skipped=[], failed=failed_items, found_external_ids={"ok-1", "bad-1"}
+        )
+        run_ids: list = []
+        try:
+            with (
+                patch("private_rag_apps.ingestion.indexer.load_drive", return_value=drive_result),
+                patch("private_rag_apps.ingestion.indexer.voyageai") as mock_voyage,
+            ):
+                _mock_embed(mock_voyage)
+                run = run_gdrive_ingestion(db, folder_id="root-folder", trigger="cli")
+                run_ids.append(run.id)
+
+            # 一部ファイルのダウンロード失敗だけでは、Run全体はerrorにならない
+            # （個別失敗は「スキップして続行」であり、Runの失敗ではないため）
+            assert run.status != "error"
+            assert run.status == "success"
+            assert "bad.txt" in run.stats["failed_files"]
+            # 成功した方のファイルは通常通り取り込まれている
+            assert run.stats["added"] == 1
+            source = db.query(Source).filter(Source.external_id == "ok-1").first()
+            assert source is not None
+        finally:
+            _cleanup(db, external_ids=["ok-1"], run_ids=run_ids)
+
+
+class TestFolderAccessErrorSurfacesInRunError:
+    """スペック §4.9「対象フォルダが見つからない／共有されていない」行のend-to-end確認
+    （m9_tasklist.md T7 作業項目2・完了条件3）。
+
+    GoogleDriveClient自身がサービスアカウントのメールアドレス・共有手順付きの
+    GoogleDriveAccessErrorを送出することは test_ingestion_gdrive_client.py の
+    TestListChildren で既に確認済み。ここではその例外が execute_gdrive_ingestion()の
+    catch-all（`except Exception as e: run.status="error"; run.error=str(e)`）を経由して
+    実際に ingest_runs.error へ記録されるところまでを確認する（indexer.py側は既存実装のまま、
+    T7では新規実装は不要 — brief記載の通りテストによる確認のみが本項目の作業）。"""
+
+    def test_access_error_with_email_and_sharing_instructions_is_recorded_in_run_error(self, db):
+        run_ids: list = []
+        error_message = (
+            "Google Drive フォルダ (id=missing-folder) が見つからないか、"
+            "サービスアカウントに共有されていません。\n"
+            "Google Drive で対象フォルダを開き、「共有」からサービスアカウントのメールアドレス "
+            "'m9-test-sa@m9-test-project.iam.gserviceaccount.com' を「閲覧者」として"
+            "追加してください。\n"
+            "手順は README の「Google Drive からの取り込み」セクションを参照してください。"
+        )
+        try:
+            run = start_run(db, trigger="cli")
+            run_ids.append(run.id)
+
+            with patch(
+                "private_rag_apps.ingestion.indexer.load_drive",
+                side_effect=GoogleDriveAccessError(error_message),
+            ):
+                with pytest.raises(GoogleDriveAccessError):
+                    execute_gdrive_ingestion(db, run, folder_id="missing-folder")
+
+            db.refresh(run)
+            assert run.status == "error"
+            assert run.error is not None
+            assert "m9-test-sa@m9-test-project.iam.gserviceaccount.com" in run.error
+            assert "閲覧者" in run.error
+            assert "共有" in run.error
         finally:
             _cleanup(db, run_ids=run_ids)
 

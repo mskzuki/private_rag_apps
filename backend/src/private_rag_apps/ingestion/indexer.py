@@ -102,7 +102,10 @@ def execute_gdrive_ingestion(
     execute_ingestion() と共通のコードパス（_process_documents/_process_one 以降）を通る
     （m9_google_drive_ingestion.md §4.5, AGENTS.md §3 の worker/cli 同様 ingestion 層は単一入口）。
     T2由来の GoogleDriveConfigError/AuthError/AccessError も他の例外と同様に run.error として
-    記録し、プロセスをクラッシュさせない"""
+    記録し、プロセスをクラッシュさせない。
+    個別ファイルのダウンロード失敗（gdrive_loader.load_drive()がスキップして`result.failed`へ
+    畳み込んだもの）は、ローカル取り込みの_process_documentsが失敗を`stats["failed_files"]`へ
+    追加するのと同じ形（plain string のリスト）に揃えて畳み込む（スペック §4.9・T7）"""
     run.source_type = "google_drive"
     try:
         result = load_drive(db, folder_id)
@@ -111,6 +114,8 @@ def execute_gdrive_ingestion(
             stats["skipped_items"] = [
                 {"name": item.name, "path": item.path, "reason": item.reason} for item in result.skipped
             ]
+        if result.failed:
+            stats["failed_files"].extend(item.path for item in result.failed)
 
         _process_documents(db, run, stats, result.documents)
 

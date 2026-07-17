@@ -18,6 +18,7 @@
 import datetime
 from typing import Dict, List, NamedTuple, Optional, Set
 
+from langfuse import get_client, observe
 from sqlalchemy.orm import Session
 
 from private_rag_apps.core.time import utcnow
@@ -64,6 +65,13 @@ class DriveLoadResult(NamedTuple):
       `Document` を既存の `ingestion/diff.py::classify()` にそのまま渡して最終判定するのが
       T4の責務（本モジュールは classify() を呼ばない・変更検知を独自に再実装しない）。
     - skipped: ショートカット・非対応mimeTypeによりスキップされたアイテム（構造化情報）。
+      「取り込まないと選択した」ものであり、失敗ではない。
+    - failed: ダウンロード（`GoogleDriveClient.download_content`）またはデコードに失敗した
+      アイテム（構造化情報。`SkippedItem`と同じ形を再利用する）。skippedとは異なり
+      「取り込むつもりだったが失敗した」ものであり、スペック §4.9「個別ファイルのダウンロード
+      失敗」行に対応する。T4がこれを `ingest_runs.stats.failed_files` へ畳み込む
+      （T7・m9_tasklist.md T7 作業項目3）。1件の失敗が走査全体を中断させないことがこの
+      フィールドの存在意義。
     - found_external_ids: 対応mimeType判定を通過し、フォルダ配下に現存する全ファイルの
       `external_id` 集合。`documents` には「`modifiedTime` 無変化のためダウンロードを
       省略した」ファイルは含まれないため、`documents` の `external_id` だけを「走査で
@@ -75,6 +83,7 @@ class DriveLoadResult(NamedTuple):
 
     documents: List[Document]
     skipped: List[SkippedItem]
+    failed: List[SkippedItem]
     found_external_ids: Set[str]
 
 
@@ -134,17 +143,31 @@ def _walk(
     existing_by_external_id: Dict[str, _ExistingSourceInfo],
     documents: List[Document],
     skipped: List[SkippedItem],
+    failed: List[SkippedItem],
     found_external_ids: Set[str],
+    api_call_counts: Dict[str, int],
 ) -> None:
-    """`folder_id` 配下を再帰的に走査し、`documents`/`skipped`/`found_external_ids` を
+    """`folder_id` 配下を再帰的に走査し、`documents`/`skipped`/`failed`/`found_external_ids` を
     その場で追記していく（`gdrive_client.list_children` がページネーションを内部で処理済みの
-    ため、ここでは子フォルダへの再帰のみを扱えばよい）。
+    ため、ここでは子フォルダへの再帰のみを扱えばよい）。`api_call_counts` は Drive API 呼び出し
+    回数を`load_drive()`側の`gdrive_scan` spanメタデータへ渡すためのカウンタ（スペック §6）。
     """
+    api_call_counts["list_calls"] += 1
     for child in client.list_children(folder_id):
         child_path = f"{breadcrumb}/{child.name}" if breadcrumb else child.name
 
         if child.mime_type == FOLDER_MIME_TYPE:
-            _walk(client, child.id, child_path, existing_by_external_id, documents, skipped, found_external_ids)
+            _walk(
+                client,
+                child.id,
+                child_path,
+                existing_by_external_id,
+                documents,
+                skipped,
+                failed,
+                found_external_ids,
+                api_call_counts,
+            )
             continue
 
         if child.mime_type == SHORTCUT_MIME_TYPE:
@@ -165,8 +188,20 @@ def _walk(
         if _should_skip_download(child, existing):
             continue
 
-        content = client.download_content(child)
-        text = content.decode("utf-8")
+        api_call_counts["download_calls"] += 1
+        try:
+            content = client.download_content(child)
+            text = content.decode("utf-8")
+        except Exception as e:
+            # スペック §4.9「個別ファイルのダウンロード失敗」: 1件の失敗（ネットワーク瞬断・
+            # 取得直後にアクセス不能になった等の`GoogleDriveAccessError`、非UTF-8コンテンツによる
+            # デコード失敗を含む）で走査全体を中断させず、スキップして続行する。
+            # ingest_runs.stats.failed_files への畳み込みは呼び出し元（indexer.py）の責務
+            reason = f"ダウンロードに失敗したためスキップしました: {e}"
+            failed.append(SkippedItem(name=child.name, path=child_path, reason=reason))
+            print(f"Failed to download {child_path}: {e}")
+            continue
+
         documents.append(
             Document(
                 path=child_path,
@@ -180,6 +215,7 @@ def _walk(
         )
 
 
+@observe(name="gdrive_scan")
 def load_drive(db: Session, folder_id: str) -> DriveLoadResult:
     """`folder_id` を起点にDriveフォルダを再帰的に走査し、`Document` 相当の内部表現へ
     正規化する（スペック §4.4/§4.5）。
@@ -190,14 +226,41 @@ def load_drive(db: Session, folder_id: str) -> DriveLoadResult:
     - `modifiedTime` 事前フィルタで無変化ファイルはダウンロードを省略する
     - ダウンロードした本文から `Document`（`content_hash` はDocument.__init__が自動計算）を
       構築する。`content_hash` に基づく最終判定（`classify()`）はT4が行う
+    - 走査全体を `@observe(name="gdrive_scan")` でLangfuseにtrace化し、走査件数・API呼び出し
+      回数をspanメタデータへ記録する（スペック §6・Drive APIのレート制限診断用。T7）
     """
     client = GoogleDriveClient()
     existing_by_external_id = _load_existing_drive_sources(db)
 
     documents: List[Document] = []
     skipped: List[SkippedItem] = []
+    failed: List[SkippedItem] = []
     found_external_ids: Set[str] = set()
+    api_call_counts: Dict[str, int] = {"list_calls": 0, "download_calls": 0}
 
-    _walk(client, folder_id, "", existing_by_external_id, documents, skipped, found_external_ids)
+    _walk(
+        client,
+        folder_id,
+        "",
+        existing_by_external_id,
+        documents,
+        skipped,
+        failed,
+        found_external_ids,
+        api_call_counts,
+    )
 
-    return DriveLoadResult(documents=documents, skipped=skipped, found_external_ids=found_external_ids)
+    get_client().update_current_span(
+        metadata={
+            "files_scanned": len(found_external_ids) + len(skipped) + len(failed),
+            "documents_found": len(documents),
+            "skipped": len(skipped),
+            "failed": len(failed),
+            "list_calls": api_call_counts["list_calls"],
+            "download_calls": api_call_counts["download_calls"],
+        },
+    )
+
+    return DriveLoadResult(
+        documents=documents, skipped=skipped, failed=failed, found_external_ids=found_external_ids
+    )

@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     drive_service_account_file: str = ""  # サービスアカウントJSONキーのファイルパス（リポジトリにはコミットしない）
     redis_url: str = "redis://localhost:6379/0"  # ARQが使用するRedis接続文字列（API経由のDrive取り込みトリガでのみ使用）
     ingest_gdrive_job_max_tries: int = 3  # API経由トリガのARQジョブ最大試行回数（既定3。超過時はingest_runs.status='error'）
+    drive_api_max_retries: int = (
+        5  # Drive API呼び出し失敗時の再試行回数（google-api-python-client組み込みのexponential backoff。429/5xx対策。voyage_max_retriesと同じ方針）
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

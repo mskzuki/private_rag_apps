@@ -305,6 +305,72 @@ class TestDownloadContent:
                 client.download_content(file)
 
 
+class TestApiCallRetries:
+    """Drive APIレート制限（429）対策（T7 作業項目1）。
+
+    google-api-python-clientの`HttpRequest.execute(num_retries=N)`は、429/5xxレスポンスに
+    対して組み込みのexponential backoffで自動的にリトライする（インストール済みライブラリの
+    `googleapiclient.http._should_retry_response`/`_retry_request`実装で確認済み。ADR相当の
+    根拠はtask-7-report.md参照）。この既存ライブラリ機能に委譲する実装であるため、
+    「execute()がsettings.drive_api_max_retriesの値でnum_retriesを渡して呼ばれているか」を
+    検証すれば、429時にリトライされることの十分な保証になる。実際の429→成功という
+    ラウンドトリップをHttpErrorのside_effectで模擬する統合的なテストは、
+    google-api-python-client自体の再実装になってしまうため行わない（brief記載の通り）。
+    """
+
+    def test_list_children_passes_num_retries_to_execute(self, configured_settings, monkeypatch):
+        monkeypatch.setattr(settings, "drive_api_max_retries", 7)
+        service = _mock_service()
+        service.files.return_value.list.return_value.execute.return_value = {
+            "files": [],
+            "nextPageToken": None,
+        }
+        with patch("private_rag_apps.ingestion.gdrive_client.build", return_value=service):
+            client = GoogleDriveClient()
+            client.list_children("folder-abc123")
+
+        service.files.return_value.list.return_value.execute.assert_called_once_with(num_retries=7)
+
+    def test_download_get_media_passes_num_retries_to_execute(self, configured_settings, monkeypatch):
+        monkeypatch.setattr(settings, "drive_api_max_retries", 7)
+        service = _mock_service()
+        service.files.return_value.get_media.return_value.execute.return_value = b"content"
+        file = DriveFile(
+            id="file-1",
+            name="a.txt",
+            mime_type="text/plain",
+            modified_time=None,
+            web_view_link=None,
+            parents=["folder-abc123"],
+        )
+        with patch("private_rag_apps.ingestion.gdrive_client.build", return_value=service):
+            client = GoogleDriveClient()
+            client.download_content(file)
+
+        service.files.return_value.get_media.return_value.execute.assert_called_once_with(num_retries=7)
+
+    def test_download_export_passes_num_retries_to_execute(self, configured_settings, monkeypatch):
+        monkeypatch.setattr(settings, "drive_api_max_retries", 7)
+        service = _mock_service()
+        service.files.return_value.export.return_value.execute.return_value = b"exported"
+        file = DriveFile(
+            id="doc-1",
+            name="My Doc",
+            mime_type=GOOGLE_DOC_MIME_TYPE,
+            modified_time=None,
+            web_view_link=None,
+            parents=["folder-abc123"],
+        )
+        with patch("private_rag_apps.ingestion.gdrive_client.build", return_value=service):
+            client = GoogleDriveClient()
+            client.download_content(file)
+
+        service.files.return_value.export.return_value.execute.assert_called_once_with(num_retries=7)
+
+    def test_default_drive_api_max_retries_is_five(self):
+        assert settings.drive_api_max_retries == 5
+
+
 class TestServiceAccountEmail:
     def test_service_account_email_reflects_key_file(self, configured_settings):
         service = _mock_service()
