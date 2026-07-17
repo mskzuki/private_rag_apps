@@ -47,6 +47,38 @@ class TestListSources:
             assert entry["title"] == "Test Doc"
             assert entry["chunk_count"] == 2
             assert entry["deleted_at"] is None
+            # M9 T6: ローカルソースはsource_type既定値'local_fs'、source_urlはnull
+            assert entry["source_type"] == "local_fs"
+            assert entry["source_url"] is None
+        finally:
+            _cleanup(paths=[path])
+
+    def test_list_sources_includes_source_type_and_source_url_for_drive_source(self):
+        """M9 T6: Driveソースは source_type='google_drive' と保存済みの
+        source_url（webViewLink）がそのまま返ることを確認する（スペック §4.7）"""
+        db = SessionLocal()
+        path = f"{uuid.uuid4()}.md"
+        external_id = f"drv-{uuid.uuid4()}"
+        source_url = f"https://drive.google.com/file/d/{external_id}/view"
+        source = Source(
+            path=path,
+            title="Drive Doc",
+            content_hash="abc",
+            source_type="google_drive",
+            external_id=external_id,
+            source_url=source_url,
+        )
+        db.add(source)
+        db.commit()
+        db.close()
+
+        try:
+            response = client.get("/api/sources")
+            assert response.status_code == 200
+            body = response.json()
+            entry = next(s for s in body if s["path"] == path)
+            assert entry["source_type"] == "google_drive"
+            assert entry["source_url"] == source_url
         finally:
             _cleanup(paths=[path])
 

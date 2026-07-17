@@ -1,6 +1,6 @@
 # M9: Google Drive フォルダ取り込み — 単一フォルダの再帰取り込みと出典連携
 
-- Status: Draft
+- Status: Accepted（T0-T8完了。M9クローズ条件は`m9_tasklist.md`末尾参照。手動スモークテスト（実GCPサービスアカウント + 実Driveフォルダ）のみユーザー環境依存のため持ち越し・再現手順はT8タスクノートに明記）
 - Depends on: M4（増分再取り込みアーキテクチャ・`ingest_runs`、`m4_ingestion_and_demo.md`）、M2（SSE `citations` イベント — 本スペックはペイロード拡張のみ）
 - Blocked by: なし
 - Blocks: なし
@@ -13,6 +13,8 @@
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.4 | 2026-07-17 | T8（テスト・ドキュメント最終反映・動作確認）完了に伴い Status を Draft → Accepted に変更。M9 全体（T0-T8）が完了し、`architecture.md`/`db_design.md`/README への実装反映、`decisions.md` の M9 関連3決定の実装照合（齟齬なし）、`make lint`/`make test` の通過を確認済み。実GCPサービスアカウント + 実Driveフォルダでの手動スモークテストのみユーザー環境依存のため持ち越し（再現手順は `m9_tasklist.md` T8タスクノート参照。M7 T3の Voyage/OpenAI レート制限ブロッカーと同様、環境依存の制約として明示的に記録） |
+| v0.3 | 2026-07-17 | T7（エラー処理・観測性）実装反映: (1) §5 に `DRIVE_API_MAX_RETRIES`（既定5）を追加。Drive API の 429/5xx 対策は手製バックオフループではなく `google-api-python-client` 組み込みの `num_retries` に委譲する方針を明記 (2) §6 の ARQ ジョブ trace 名を、当初案の `ingest_run` 統一から実装済みの `ingest_run_gdrive`（T4 由来）へ確定。理由（Langfuse UI上でのトレース名によるローカル/Drive即時判別を優先）を追記し、実装と仕様の食い違いを解消 |
 | v0.2 | 2026-07-17 | レビュー反映: (1) ARQ worker プロセスの起動方法が未規定だった問題を修正。§1/§4.8 に `make worker`（ローカルプロセス起動、`make web` と同じパターン）を追加 (2) 新設パッケージ `worker/` が AGENTS.md §3 の依存方向ルールに反映されていなかった問題を修正。§9 に AGENTS.md §3 への `worker/` 追加を記載（実ファイルは同時に改訂済み） |
 | v0.1 | 2026-07-17 | 初版。ユーザーとの壁打ちで番号衝突（M8 は `m7_adaptive_routing.md` で clarify/HITL/LLM grader 候補として使用済み → 本機能は M9 とする）・スコープ改訂方針・認証方式（サービスアカウント）・ジョブキュー方針（ARQ/Redis を API 経由トリガの堅牢化目的でのみ導入）を確定 |
 
@@ -252,6 +254,7 @@ CREATE UNIQUE INDEX sources_external_id_unique_gdrive
 | `DRIVE_SERVICE_ACCOUNT_FILE` | `""` | サービスアカウント JSON キーのファイルパス |
 | `REDIS_URL` | `redis://localhost:6379/0` | ARQ が使用する Redis 接続文字列 |
 | `INGEST_GDRIVE_JOB_MAX_TRIES` | `3` | API 経由トリガの ARQ ジョブ最大試行回数 |
+| `DRIVE_API_MAX_RETRIES` | `5` | Drive API 呼び出し（`files.list`/`files.get`/`files.export`）失敗時の再試行回数。`google-api-python-client` の `HttpRequest.execute(num_retries=...)` 組み込みの指数バックオフに委譲する（`VOYAGE_MAX_RETRIES` と同じ方針。§4.9/§8 の 429 対策） |
 
 - Drive 機能は**完全にオプトイン**。`DRIVE_FOLDER_ID`/`DRIVE_SERVICE_ACCOUNT_FILE` が空の場合、`make ingest-gdrive`/`POST /api/ingest/gdrive` は明確なエラーで即座に失敗するのみで、既存機能（`make demo` を含む）には一切影響しない
 - Redis はローカル docker-compose 上で起動する内部ミドルウェアであり、新たな SaaS アカウント登録を必要としない。NFR-8「必要な外部アカウントは OpenAI / Voyage の API キーのみ」は Drive 機能を使わない限り引き続き成立する。Drive 機能自体は Google アカウント（サービスアカウント作成のための GCP プロジェクト）を新たに要求するが、これは機能を使う場合にのみ必要なオプトイン要件であり、`make demo` のクリーンルーム体験（NFR-8）には影響しない
@@ -263,8 +266,8 @@ CREATE UNIQUE INDEX sources_external_id_unique_gdrive
 ## 6. 可観測性（Langfuse）
 
 - Drive 取り込みの埋め込み呼び出しは既存の `@observe(name="embed_documents")` にそのまま乗る（ローダーが差し替わるだけで埋め込み呼び出し自体は共通コード）
-- Drive 探索段（`gdrive_loader`）にも `@observe(name="gdrive_scan")` 相当の span を追加し、走査件数・API 呼び出し回数を記録する（Drive API のレート制限診断に資する）
-- ARQ ジョブの実行自体も `ingest_runs` に記録される既存の `@observe(name="ingest_run")` の枠内で trace 化する
+- Drive 探索段（`gdrive_loader.load_drive()`）に `@observe(name="gdrive_scan")` span を追加し、走査件数（`files_scanned`/`documents_found`/`skipped`/`failed`）・API 呼び出し回数（`list_calls`/`download_calls`）を span メタデータに記録する（Drive API のレート制限診断に資する。T7 で実装）
+- ARQ ジョブの実行自体（`execute_gdrive_ingestion()`）は、ローカル取り込みと同じ `@observe(name="ingest_run")` ではなく、**専用の `@observe(name="ingest_run_gdrive")`** で trace 化する（T4 で導入・T7 で確定。当初案は本節旧版の通り `ingest_run` への統一だったが、Langfuse UI 上でトレース名だけを見てローカル/Drive 取り込みを即座に区別できる利点を優先し、意図的に分離する判断へ変更した。両者とも `ingest_runs` テーブルへは同一スキーマで記録されるため、DB側のクエリ性はこの判断で変わらない）
 
 ---
 

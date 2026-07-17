@@ -140,11 +140,27 @@ def test_chat_sse_event_sequence_and_schema_match_pre_graph_capture(
             "top_score": None,
         }
 
-        # citations の JSON スキーマ: リスト内の各要素が n/title/path/heading/chunk_id を持つ
+        # citations の JSON スキーマ: リスト内の各要素が n/title/path/heading/chunk_id と、
+        # T6で追加された source_type/source_id/source_url を持つ（既存5フィールドの意味は不変。
+        # T6完了条件チェックリスト参照）。stubのretrieve_contextはsource_type等を持たない
+        # 旧形式のchunk dictを返すため、generator側の.get()デフォルト
+        # (source_type="local_fs", source_id/source_url=None)が効くケースを確認する
         citations_payload = json.loads(events[event_types.index("citations")][1])
         assert isinstance(citations_payload, list)
-        assert citations_payload[0].keys() == {"n", "title", "path", "heading", "chunk_id"}
+        assert citations_payload[0].keys() == {
+            "n",
+            "title",
+            "path",
+            "heading",
+            "chunk_id",
+            "source_type",
+            "source_id",
+            "source_url",
+        }
         assert citations_payload[0]["title"] == "Doc1"
+        assert citations_payload[0]["source_type"] == "local_fs"
+        assert citations_payload[0]["source_id"] is None
+        assert citations_payload[0]["source_url"] is None
 
         # token の JSON スキーマ: 素の文字列がそのままJSONエンコードされている
         token_payloads = [json.loads(d) for e, d in events if e == "token"]

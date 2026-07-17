@@ -2,6 +2,10 @@
 .env
 .claude/settings.local.json
 
+# Google Drive サービスアカウントJSONキー（M9。DRIVE_SERVICE_ACCOUNT_FILEが参照するローカルファイル。
+# READMEの「Google Driveからの取り込み」セクションが案内する既定の保存先）
+backend/secrets/
+
 # Python
 __pycache__/
 *.py[cod]

@@ -36,16 +36,30 @@ class ScoredChunk(TypedDict, total=False):
     title: str
     path: str
     rerank_score: float
+    source_type: str
+    source_id: str | None
+    source_url: str | None
 
 
 class Citation(TypedDict):
-    """回答に付与する出典情報（既存 generate_answer_stream の citations イベント payload 形式）"""
+    """回答に付与する出典情報（既存 generate_answer_stream の citations イベント payload 形式）。
+    M9 T6で source_type/source_id/source_url を追加（スペック §4.7）。
+    source_url はスペック §4.7 のフロントエンド分岐説明（`c.source_url` を使う）から
+    citation payload 自体が保持する必要があると判断し、当初のタスクブリーフの省略された
+    フィールド列挙（source_type/source_idのみ）に対して追加した（フロントは
+    GET /api/sources を別途叩かず、citation payload 自体が必要な情報を全て持つ、という
+    スペック§4.7の明示チェーンの制約に従うため）。既存5フィールドと同様、generator は
+    常に8フィールド全てを一度に構築するため total=False にはしない（既存フィールドの
+    「常にセットで揃っている」という契約を新フィールドにも適用する）"""
 
     n: int
     title: str
     path: str
     heading: str
     chunk_id: str
+    source_type: str
+    source_id: str | None
+    source_url: str | None
 
 
 class GraphState(TypedDict, total=False):

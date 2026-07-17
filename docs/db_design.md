@@ -47,6 +47,9 @@ erDiagram
         text path
         text title
         text content_hash
+        text source_type
+        text external_id
+        text source_url
         timestamptz source_updated_at
         timestamptz deleted_at
     }
@@ -82,21 +85,27 @@ erDiagram
 
 ## 4. テーブル定義（DDL）
 
-### sources — 取り込み元ドキュメント（ローカルファイル）
+### sources — 取り込み元ドキュメント（ローカルファイル / Google Drive）
 
 ```sql
 CREATE TABLE sources (
     id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    path               text NOT NULL,      -- コーパスディレクトリからの相対パス
+    path               text NOT NULL,      -- ローカル: コーパスディレクトリからの相対パス。Drive: 表示用の疑似パス（一意性は保証しない）
     title              text NOT NULL DEFAULT '',
     content_hash       text NOT NULL,      -- 変更検知用（無変更なら再埋め込みしない）
-    source_updated_at  timestamptz,        -- ファイルの mtime
-    deleted_at         timestamptz,        -- コーパスから消えたファイルの論理削除
+    source_type        text NOT NULL DEFAULT 'local_fs'
+        CHECK (source_type IN ('local_fs', 'google_drive')),  -- M9で追加
+    external_id        text,               -- M9で追加。Driveソースのみ non-null（Drive file ID。リネーム・移動があっても不変）
+    source_url         text,               -- M9で追加。Driveソースのみ non-null（Drive API の webViewLink。citationから直接開ける）
+    source_updated_at  timestamptz,        -- ローカル: ファイルの mtime。Drive: modifiedTime
+    deleted_at         timestamptz,        -- コーパス/フォルダから消えたファイルの論理削除
     created_at         timestamptz NOT NULL DEFAULT now(),
-    updated_at         timestamptz NOT NULL DEFAULT now(),
-    UNIQUE (path)
+    updated_at         timestamptz NOT NULL DEFAULT now()
+    -- UNIQUE(path) はM9で廃止。source_type別のパーシャルユニークインデックスに置き換え（§5）
 );
 ```
+
+> M9（`backend/alembic/versions/0004_drive_source_fields.py`）で `source_type`/`external_id`/`source_url` を追加し、`UNIQUE(path)` を `source_type` ごとのパーシャルユニークインデックスに置き換えた（Google Drive は同一フォルダ内のファイル名重複を許容するため。§5・`docs/decisions.md` 参照）。
 
 ### chunks — 検索単位（ベクトル + 全文）
 
@@ -141,6 +150,8 @@ CREATE TABLE ingest_runs (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     trigger     text NOT NULL CHECK (trigger IN ('cli','api','demo')),
     status      text NOT NULL CHECK (status IN ('running','success','error')),
+    source_type text NOT NULL DEFAULT 'local_fs'
+        CHECK (source_type IN ('local_fs', 'google_drive')),  -- M9で追加
     stats       jsonb NOT NULL DEFAULT '{}',  -- {added, updated, deleted, skipped, failed_files: []}
     error       text,
     started_at  timestamptz NOT NULL DEFAULT now(),
@@ -148,7 +159,7 @@ CREATE TABLE ingest_runs (
 );
 ```
 
-> 多重実行の抑止（architecture §6）は `status='running'` の行の存在チェックで行う。
+> 多重実行の抑止（architecture §6）は `status='running'` の行の存在チェックで行う。`source_type`（M9で追加）はトリガ方法（`trigger`）とは独立した軸であり、既存の `trigger` CHECK 制約は変更していない。現状 `GET /api/ingest/runs` の API 応答には含めていない（`api/main.py` の既存契約を変更しない方針。`docs/architecture.md` §7）。
 
 ---
 
@@ -169,10 +180,18 @@ CREATE INDEX chunks_source_id       ON chunks (source_id);
 CREATE INDEX sources_not_deleted    ON sources (updated_at) WHERE deleted_at IS NULL;
 CREATE INDEX messages_conversation  ON messages (conversation_id, created_at);
 CREATE INDEX ingest_runs_started    ON ingest_runs (started_at DESC);
+
+-- 識別キー（M9）: source_type ごとに一意性を分離するパーシャルユニークインデックス。
+-- 旧 UNIQUE(path)（sources_path_key）はこの2本に置き換えられ廃止された。
+CREATE UNIQUE INDEX sources_path_unique_local
+    ON sources (path) WHERE source_type = 'local_fs';
+CREATE UNIQUE INDEX sources_external_id_unique_gdrive
+    ON sources (external_id) WHERE source_type = 'google_drive';
 ```
 
 - **HNSW vs IVFFlat**: 取り込みは増分で継続的に更新されるため、事前学習不要でリコールの高い **HNSW** を採用。検索時は `hnsw.ef_search` を調整。
 - 検索は `deleted_at IS NULL` 前提なので、`sources` に部分インデックスを置き chunks 側は結合で除外する。
+- **`sources_path_unique_local`/`sources_external_id_unique_gdrive`（M9）**: 旧 `UNIQUE(path)` 制約（`sources_path_key`）を置き換える形で導入。ローカルソースは `path` の一意性を（実質変更なく）維持し、Drive ソースは `external_id`（Drive file ID）の一意性のみを強制する。同一 `path` を持つローカルソースと Drive ソースの共存、および同一 `path` を持つ複数 Drive ソースの共存を許容する（Drive は同一フォルダ内のファイル名重複を許すため）。`external_id`/`path` はそれぞれ自身の `source_type` の行にのみユニーク制約がかかり、`source_type` をまたいだ重複はそもそも比較対象にならない（パーシャルインデックスの性質上）。
 
 ---
 
@@ -219,9 +238,11 @@ LIMIT :fuse_k;
 | 目的 | 使うカラム |
 |---|---|
 | 無変更スキップ（再埋め込み回避） | `sources.content_hash` |
-| 更新検知の補助 | `sources.source_updated_at`（mtime） |
+| 更新検知の補助 | `sources.source_updated_at`（ローカル: mtime。Drive: `modifiedTime`） |
 | 削除反映 | `sources.deleted_at`（chunks は検索時に JOIN で除外） |
 | 実行の観測 | `ingest_runs.stats`（added/updated/deleted/skipped/failed_files） |
+| ソース識別キー（M9） | `sources.path`（ローカル）/ `sources.external_id`（Drive）。`source_type` で分岐（§5） |
+| Drive のダウンロード省略（M9） | `sources.source_updated_at` と Drive `modifiedTime` の事前比較（無変化ならダウンロード自体を省略。最終判定は引き続き `content_hash` が正） |
 
 > ドキュメント更新時は「該当 source の chunks を全削除 → 再チャンク → 再挿入」で置換する（決定済み。部分更新より整合を保ちやすい）。埋め込みは事前（トランザクション外）に計算し、delete+insert のみを 1 つの短いトランザクションで行うことで、検索がチャンク 0 件の中間状態を見ないようにする（M4 実装）。
 
@@ -252,6 +273,7 @@ LIMIT :fuse_k;
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.4 | 2026-07-17 | M9（Google Drive フォルダ取り込み）実装反映（T8。マイグレーション `0004_drive_source_fields.py` 準拠）: §3 ER 図の `sources` に `source_type`/`external_id`/`source_url` を追加。§4 の `sources`/`ingest_runs` DDL を実装済みスキーマに同期（`source_type` CHECK 制約・`external_id`/`source_url`・旧 `UNIQUE(path)` 廃止）。§5 に `sources_path_unique_local`/`sources_external_id_unique_gdrive`（`sources_path_key` の置き換え）を追加。§7 に Drive のソース識別キー・`modifiedTime` 事前フィルタの行を追加 |
 | v0.3 | 2026-07-11 | M4 追従: §7 に増分再取り込みの実装詳細を追記。埋め込み事前+短トランザクション全置換、多重実行抑止（`running` 行の存在 + 開始の原子性のための advisory lock。DDL 非追加）とstale running 回収、削除安全弁（`INGEST_DELETE_GUARD_RATIO`・`FORCE_DELETE`）、soft-delete 済み path の復活経路を明記 |
 | v0.2 | 2026-07-07 | requirements v0.2 追従: `connections`（OAuth トークン暗号化含む）・`sync_runs` を廃止。`documents` → `sources` に改名（path 一意・mtime 保持）、`ingest_runs` を独立ログとして新設（trigger 列追加）。ER 図・インデックス・ハイブリッド検索 SQL を sources 前提に更新。トークン暗号化セクションを削除 |
 | v0.1 | 2026-07-04 | 初版（壁打ちドラフト） |

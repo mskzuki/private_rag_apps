@@ -11,8 +11,12 @@ from sqlalchemy import desc, func
 from langfuse import observe, propagate_attributes
 from sse_starlette.sse import EventSourceResponse
 
+from arq import create_pool
+from arq.connections import RedisSettings
+
 from private_rag_apps.core.db import get_db, SessionLocal
 from private_rag_apps.core.config import settings
+from private_rag_apps.core.time import utcnow
 from private_rag_apps.models.rag import Chunk, Conversation, IngestRun, Message, Source
 from private_rag_apps.ingestion.concurrency import (
     IngestAlreadyRunningError,
@@ -57,6 +61,8 @@ class SourceListItem(TypedDict):
     chunk_count: int
     updated_at: datetime
     deleted_at: Optional[datetime]
+    source_type: str
+    source_url: Optional[str]
 
 class TriggerIngestResult(TypedDict):
     id: str
@@ -272,6 +278,8 @@ def list_sources(
             "chunk_count": chunk_count,
             "updated_at": source.updated_at,
             "deleted_at": source.deleted_at,
+            "source_type": source.source_type,
+            "source_url": source.source_url,
         }
         for source, chunk_count in rows
     ]
@@ -302,6 +310,49 @@ def trigger_ingest(
 
     run_id = str(run.id)
     background_tasks.add_task(_run_ingest_in_background, run_id, force_delete)
+    return {"id": run_id, "status": run.status, "trigger": run.trigger}
+
+
+async def _enqueue_gdrive_job(run_id: str, folder_id: str, force_delete: bool) -> None:
+    """ARQへジョブをenqueueする。低頻度エンドポイントのため、呼び出しごとに使い捨てのRedis
+    接続プールを作る単純な実装で足りる（コネクションプールのライフサイクル管理は導入しない）"""
+    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+    try:
+        await redis.enqueue_job("run_gdrive_ingestion", run_id, folder_id, force_delete)
+    finally:
+        await redis.aclose()
+
+
+@app.post("/api/ingest/gdrive")
+async def trigger_ingest_gdrive(force_delete: bool = False, db: Session = Depends(get_db)) -> TriggerIngestResult:
+    """Google Driveフォルダ取り込みをARQジョブとして起動する。呼び出し時点でingest_runsの
+    running行を同期作成してからenqueueし、作成したrunのidを即返す（`POST /api/ingest`と同じ
+    パターン）。多重実行の抑止（advisory lock + status='running'行チェック）はソース種別に
+    関わらずグローバルに1本のrunning行で行う（start_runはsource_type非依存のまま。
+    m9_google_drive_ingestion.md §4.6）。
+    DRIVE_FOLDER_ID/DRIVE_SERVICE_ACCOUNT_FILE未設定（Drive機能無効）の事前チェックはここでは
+    行わない。GoogleDriveClientの構築時エラーはARQワーカーがexecute_gdrive_ingestion()を
+    呼んだ際にrun.errorとして自然に記録され、GET /api/ingest/runsから確認できるため、
+    T2のバリデーションをここで二重実装しない"""
+    try:
+        run = start_run(db, trigger="api")
+    except IngestAlreadyRunningError as e:
+        raise HTTPException(status_code=409, detail=f"ingestion already running: {e}")
+
+    run_id = str(run.id)
+    try:
+        await _enqueue_gdrive_job(run_id, settings.drive_folder_id, force_delete)
+    except Exception as e:
+        # start_run()で作成済みのrunning行は、enqueue自体が失敗すると誰にも処理されない
+        # まま取り残される（実行中ずっと有効な排他をrunning行の存在そのものが担っているため、
+        # 放置するとreap_stale_runningがingest_stale_running_sec後に回収するまでの間、
+        # 他の取り込み（ローカル/Drive双方）がすべてブロックされ続ける）。
+        # execute_gdrive_ingestion()自身の無条件error確定パターンと同じ形でここも確定させる
+        run.status = "error"
+        run.error = str(e)
+        run.finished_at = utcnow()
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"failed to enqueue gdrive ingestion job: {e}")
     return {"id": run_id, "status": run.status, "trigger": run.trigger}
 
 

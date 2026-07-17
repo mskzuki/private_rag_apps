@@ -15,9 +15,12 @@ class Source(Base):
     __tablename__ = "sources"
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
-    path: Mapped[str] = mapped_column(unique=True, nullable=False)
+    path: Mapped[str] = mapped_column(nullable=False)
     title: Mapped[str] = mapped_column(server_default="", nullable=False)
     content_hash: Mapped[str] = mapped_column(nullable=False)
+    source_type: Mapped[str] = mapped_column(server_default="local_fs", nullable=False)
+    external_id: Mapped[Optional[str]] = mapped_column()
+    source_url: Mapped[Optional[str]] = mapped_column()
     source_updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP(timezone=True))
     deleted_at: Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP(timezone=True))
     created_at: Mapped[datetime.datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
@@ -49,6 +52,7 @@ class IngestRun(Base):
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     trigger: Mapped[str] = mapped_column(nullable=False)
     status: Mapped[str] = mapped_column(nullable=False)
+    source_type: Mapped[str] = mapped_column(server_default="local_fs", nullable=False)
     stats: Mapped[Dict[str, Any]] = mapped_column(JSONB, server_default='{}', nullable=False)
     error: Mapped[Optional[str]]
     started_at: Mapped[datetime.datetime] = mapped_column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)

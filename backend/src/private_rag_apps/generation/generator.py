@@ -126,6 +126,9 @@ def generate_answer_stream(query: str, context_chunks: List[Dict[str, Any]]):
                 "path": chunk["path"],
                 "heading": chunk.get("metadata", {}).get("heading", ""),
                 "chunk_id": chunk["chunk_id"],
+                "source_type": chunk.get("source_type", "local_fs"),
+                "source_id": chunk.get("external_id"),
+                "source_url": chunk.get("source_url"),
             }
         )
 

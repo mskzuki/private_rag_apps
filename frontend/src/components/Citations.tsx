@@ -7,7 +7,25 @@ type Citation = {
   path?: string;
   title: string;
   heading: string;
+  source_type?: string;
+  source_url?: string;
 };
+
+/**
+ * citation の href を解決する（M9 T6, スペック §4.7）。
+ * Drive出典（source_type === "google_drive"）かつ source_url（保存済みの
+ * webViewLink）がある場合はそれをそのまま使う（実際に開けるリンク）。
+ * それ以外（ローカルソース、またはsource_urlが欠落しているDrive出典）は
+ * 既存の file:// リンク（同一マシン前提の簡易表示）にフォールバックする。
+ * 純粋関数として切り出すことで、コンポーネントをレンダリングせずに
+ * vitestで直接ユニットテストできるようにしている。
+ */
+export function resolveCitationHref(citation: Citation): string {
+  if (citation.source_type === "google_drive" && citation.source_url) {
+    return citation.source_url;
+  }
+  return citation.path ? `file://${citation.path}` : "#";
+}
 
 export const Citations: FC = () => {
   const content = useMessage((m) => m.content[0]);
@@ -54,7 +72,7 @@ export const Citations: FC = () => {
       {citationsToShow.map((c: Citation) => (
         <a
           key={c.n}
-          href={c.path ? `file://${c.path}` : "#"}
+          href={resolveCitationHref(c)}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-100 px-3 py-1.5 text-xs transition-colors hover:bg-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"

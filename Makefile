@@ -1,10 +1,15 @@
-.PHONY: setup migrate demo ingest test lint fmt eval eval-no-cache eval-routing eval-all api web openapi
+.PHONY: setup migrate demo ingest ingest-gdrive worker test lint fmt eval eval-no-cache eval-routing eval-all api web openapi
 
 api:
 	docker compose up --build api
 
 web:
 	cd frontend && pnpm dev
+
+# API経由トリガ（POST /api/ingest/gdrive）のARQジョブを処理するworkerをホスト上で直接起動する。
+# 専用dockerイメージは作らない（m9_google_drive_ingestion.md §4.8。CLI経由取り込みはこのworkerに依存しない）
+worker:
+	cd backend && uv run arq private_rag_apps.worker.settings.WorkerSettings
 
 # 初期セットアップ: uv sync + pnpm install + .env生成 + DB起動（AGENTS.md §4/§5）
 setup:
@@ -25,6 +30,12 @@ ingest:
 # .envのCORPUS_DIRが個人の文書ディレクトリに差し替えられていても、デモは常にseed/corpusを使う
 demo: migrate
 	cd backend && CORPUS_DIR=seed/corpus uv run python -m private_rag_apps.cli.main ingest --trigger demo
+
+# Google Driveフォルダ（.envのDRIVE_FOLDER_ID）を取り込む。CLI経由は呼び出しプロセス内で完結するため
+# Redis・make workerの起動は不要（API経由トリガのみARQ/Redisを使う。m9_google_drive_ingestion.md §4.8）
+# FORCE_DELETE=1 で削除安全弁をバイパスできる
+ingest-gdrive:
+	cd backend && uv run python -m private_rag_apps.cli.main ingest-gdrive --trigger cli
 
 # rag_dev(開発/デモ用DB)を巻き込まないよう、テストは常に別DB rag_test に対して実行する（docs/architecture.md §9）
 test:

@@ -21,12 +21,24 @@ def test_graph_state_full_is_json_serializable() -> None:
                 "title": "T1",
                 "path": "p1.md",
                 "rerank_score": 0.8,
+                "source_type": "local_fs",
+                "source_id": None,
+                "source_url": None,
             }
         ],
         "kept": [],
         "route": "grounded",
         "citations": [
-            {"n": 1, "title": "T1", "path": "p1.md", "heading": "h1", "chunk_id": "c1"}
+            {
+                "n": 1,
+                "title": "T1",
+                "path": "p1.md",
+                "heading": "h1",
+                "chunk_id": "c1",
+                "source_type": "local_fs",
+                "source_id": None,
+                "source_url": None,
+            }
         ],
     }
 

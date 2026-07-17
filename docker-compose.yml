@@ -15,6 +15,15 @@ services:
       # テスト専用DB rag_test をここで作成する(docs/architecture.md §9)
       - ./backend/docker/db/initdb:/docker-entrypoint-initdb.d:ro
 
+  # M9: API経由トリガのDrive取り込みジョブ（POST /api/ingest/gdrive）をARQ経由で処理するために使う。
+  # Drive機能を使わない場合でも起動して問題ない（他サービスから未接続でも単体で正常起動する）。
+  # `make worker`はホスト上で直接起動するため、host側から到達できるよう db と同様にportを公開する
+  # （AGENTS.md §2のジョブキュー導入禁止に対するM9限定の例外。§3.3参照）
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
   api:
     build:
       context: ./backend
@@ -25,11 +34,16 @@ services:
       - backend/.env
     environment:
       - DATABASE_URL=postgresql+psycopg://rag_user:rag_pass@db:5432/rag_dev
+      # apiコンテナはcompose内部ネットワーク経由でredisサービス名で到達する。
+      # REDIS_URLの既定値(redis://localhost:6379/0)はホスト上で直接動くmake worker用であり、
+      # コンテナ内からのlocalhostはapiコンテナ自身を指してしまうため上書きが必須（dbと同じパターン）
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./seed:/app/seed
       - ./backend/src:/app/src
     depends_on:
       - db
+      - redis
 
 volumes:
   db_data:
