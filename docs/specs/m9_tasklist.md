@@ -82,11 +82,11 @@
 4. README にサービスアカウント作成・JSON キー取得・対象フォルダの共有手順をステップバイステップで追加する
 
 **完了条件:**
-- [ ] `gdrive_client.py` の各関数がモック化した Drive API（`googleapiclient` のモック）に対してテストされている
-- [ ] `DRIVE_FOLDER_ID`/`DRIVE_SERVICE_ACCOUNT_FILE` が空の場合、明確なエラーメッセージで即座に失敗することをテストで確認
-- [ ] サービスアカウントのメールアドレスをエラーメッセージに含め、共有手順を案内することを確認（フォルダ未共有時）
-- [ ] README の手順が確認できる（実際に GCP プロジェクトを作る必要はないが、手順の欠落・矛盾がないか読み直す）
-- [ ] テストで実 Drive API を叩いていない（AGENTS.md §8）
+- [x] `gdrive_client.py` の各関数がモック化した Drive API（`googleapiclient` のモック）に対してテストされている → **達成**（`backend/tests/test_ingestion_gdrive_client.py`。`build()` を `patch` し、`service.files().list/get_media/export` を `MagicMock` で模擬。`list_children` はレスポンスのフィールドパース・`pageToken` によるページネーション追従・サブフォルダに対して再帰しないことを確認するテストを含む。`download_content` は通常ファイル＝`get_media`／Googleドキュメント＝`export(mimeType=text/plain)` の呼び分けを確認。計17テスト、`make test` で green）
+- [x] `DRIVE_FOLDER_ID`/`DRIVE_SERVICE_ACCOUNT_FILE` が空の場合、明確なエラーメッセージで即座に失敗することをテストで確認 → **達成**（`TestConfigValidation` の3ケース。`GoogleDriveClient()` のコンストラクタ内で `_require_drive_config()` が即座に `GoogleDriveConfigError` を送出し、設定名と README 参照を含むメッセージであることを確認）
+- [x] サービスアカウントのメールアドレスをエラーメッセージに含め、共有手順を案内することを確認（フォルダ未共有時） → **達成**（`test_folder_not_found_or_not_shared_raises_access_error_with_email_and_instructions`／`test_folder_forbidden_raises_access_error_with_email_and_instructions`。`list_children` が404/403を受けた際、`service_account.Credentials` から取得した `service_account_email` と「閲覧者」「共有」という語を含む `GoogleDriveAccessError` に変換することを確認。**設計ノート:** Drive API は「フォルダが存在しない」と「フォルダは存在するが未共有」を区別する情報を返さないため、404/403 いずれも同一の `GoogleDriveAccessError` に統合している。スペック §4.9 のエラー処理表自体も両者を「対象フォルダが見つからない／共有されていない」という1行の事象としてまとめているため、実装はスペックの粒度と一致している）
+- [x] README の手順が確認できる（実際に GCP プロジェクトを作る必要はないが、手順の欠落・矛盾がないか読み直す） → **達成**（README「Google Driveからの取り込み」節に、GCPプロジェクトでのDrive API有効化→サービスアカウント作成→JSONキー作成・ダウンロード→`backend/.env`設定→対象フォルダの共有、の5ステップを記載。ダウンロードしたJSONキーをコミットしないよう明記し、既定の保存先候補（`backend/secrets/`）を`.gitignore`に追加済み。取り込みコマンド自体（`make ingest-gdrive`／`POST /api/ingest/gdrive`）はT3以降で実装される旨の注記を先頭に記載し、未実装機能への言及による矛盾を回避している。読み直しでステップの欠落・前後矛盾は無し）
+- [x] テストで実 Drive API を叩いていない（AGENTS.md §8） → **達成**（`test_ingestion_gdrive_client.py` はネットワークアクセスを一切行わない。`googleapiclient.discovery.build` を `patch` で差し替え、認証情報は `cryptography` でローカル生成したRSA鍵を使った使い捨てのサービスアカウントJSONキーファイルから読み込む。実 Google API・実ネットワーク呼び出しは無し。`make test` はDBを使う既存の分離ルール（`DATABASE_URL=...rag_test`）に従って実行し、全149件中この17件を含めてpass）
 
 **スコープ外:** フォルダ再帰探索・変更検知ロジック（T3）。
 
