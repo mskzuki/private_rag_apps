@@ -252,7 +252,12 @@ def load_drive(db: Session, folder_id: str) -> DriveLoadResult:
 
     get_client().update_current_span(
         metadata={
-            "files_scanned": len(found_external_ids) + len(skipped) + len(failed),
+            # found_external_idsには、ダウンロードに成功したファイルと失敗したファイルの両方が
+            # 含まれる（185行目の found_external_ids.add(child.id) はダウンロード試行より前に
+            # 実行されるため）。よって failed を別途足すと二重カウントになる。
+            # skipped（ショートカット・非対応mimeType）はfound_external_idsに一切含まれない
+            # （185行目に到達する前にcontinueする）ため、これだけ加算すればよい
+            "files_scanned": len(found_external_ids) + len(skipped),
             "documents_found": len(documents),
             "skipped": len(skipped),
             "failed": len(failed),

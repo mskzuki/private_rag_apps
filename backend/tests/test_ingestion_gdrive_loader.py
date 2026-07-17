@@ -524,10 +524,42 @@ class TestGdriveScanObservability:
         assert metadata["skipped"] == 1
         assert metadata["failed"] == 1
         assert metadata["list_calls"] == 1
-        # ダウンロード試行はf1(成功)・f3(失敗)の2件。f2はmimeType非対応でダウンロード自体
+        # ダウンロード試行はf1(成功)・f3(failed)の2件。f2はmimeType非対応でダウンロード自体
         # 試みられていない
         assert metadata["download_calls"] == 2
+        # 実ファイルはf1/f2/f3の3件ちょうど。found_external_idsにはf1(成功)・f3(失敗)の両方が
+        # ダウンロード試行前に追加される（185行目）ため、files_scannedの計算で
+        # len(found_external_ids) + len(skipped) + len(failed) のように failed を二重に
+        # 足すと 2+1+1=4 という誤った値になる（実ファイル数3件を超えて水増しされる）。
+        # 正しくは len(found_external_ids) + len(skipped) = 2+1 = 3
+        assert metadata["files_scanned"] == 3
         assert len(result.documents) == 1
+
+    def test_files_scanned_does_not_double_count_multiple_failed_downloads(self, db):
+        """`files_scanned`の二重カウント回帰防止用の専用テスト。ダウンロード失敗を2件にして、
+        誤実装（`len(found_external_ids) + len(skipped) + len(failed)`）だと実ファイル数(2件)を
+        大きく超えて水増しされる（2+0+2=4）ことを、より際立つ形で確認する。
+        正しい実装では found_external_ids が失敗ファイルも含むため、
+        len(found_external_ids) + len(skipped) = 2+0 = 2 で実ファイル数と一致する。"""
+        client = MagicMock()
+        bad_file_1 = _drive_file("bad-1", "bad1.txt", "text/plain", modified_time=None)
+        bad_file_2 = _drive_file("bad-2", "bad2.txt", "text/plain", modified_time=None)
+        client.list_children.return_value = [bad_file_1, bad_file_2]
+        client.download_content.side_effect = GoogleDriveAccessError("boom")
+
+        with (
+            patch("private_rag_apps.ingestion.gdrive_loader.GoogleDriveClient", return_value=client),
+            patch("private_rag_apps.ingestion.gdrive_loader.get_client") as mock_get_client,
+        ):
+            mock_span_client = MagicMock()
+            mock_get_client.return_value = mock_span_client
+            result = load_drive(db, "root-folder")
+
+        metadata = mock_span_client.update_current_span.call_args.kwargs["metadata"]
+        assert metadata["failed"] == 2
+        assert metadata["skipped"] == 0
+        assert metadata["files_scanned"] == 2  # 実ファイル数(2件)と一致すべき。二重カウントなら4になる
+        assert result.documents == []
 
 
 class TestDoesNotReimplementClassify:
