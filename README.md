@@ -39,7 +39,9 @@
 
 ローカルコーパスに加えて、単一の固定 Google Drive フォルダをそのまま取り込み対象にできます（複数フォルダ・複数アカウントの管理 UI は無く、OAuth も使いません。認証はサービスアカウントのみです）。詳細仕様は [docs/specs/m9_google_drive_ingestion.md](docs/specs/m9_google_drive_ingestion.md) を参照してください。
 
-> このセクションはサービスアカウントの準備〜フォルダ共有までの一度きりの設定手順を扱います。実際の取り込みコマンド（`make ingest-gdrive` / `POST /api/ingest/gdrive`）は後続タスクで実装され、実装され次第このREADMEに追記されます。設定が空のままでも既存のローカル取り込み（`make ingest`/`make demo`）には一切影響しません。
+設定が空のままでも既存のローカル取り込み（`make ingest`/`make demo`）には一切影響しません（完全にオプトイン）。以下は (A) 設定手順（一度きり）→ (B) 取り込みコマンド → (C) 動作確認の順に説明します。
+
+#### (A) 設定手順（一度きり）
 
 1. **GCP プロジェクトで Google Drive API を有効化する**
    - 既存の GCP プロジェクトを使うか、新規プロジェクトを作成する（[Google Cloud Console](https://console.cloud.google.com/)）
@@ -56,6 +58,31 @@
 5. **対象フォルダをサービスアカウントに共有する**
    - Google Drive で対象フォルダを開く → 右クリック（またはフォルダ名の横のメニュー）→「共有」
    - JSON キー内の `client_email`（`xxx@yyy.iam.gserviceaccount.com` 形式）を「閲覧者」として追加する。これは Google Drive 側での一度きりの手動操作で、以降は自動的にアクセスできる
+
+#### (B) 取り込みコマンド
+
+設定完了後、2 つの取り込み経路があります。
+
+**CLI 経由（同期実行・Redis/worker 不要）**
+
+```bash
+make ingest-gdrive
+```
+
+`make ingest`（ローカルコーパス）と同じく、呼び出しプロセス内で同期的に取り込みが完結します。Redis も `make worker` も不要です。`FORCE_DELETE=1 make ingest-gdrive` で削除安全弁をバイパスできます。
+
+**API 経由（非同期・プロセス再起動に耐える再試行つき）**
+
+こちらは Drive 取り込みに限り ARQ/Redis を使う経路です（`docs/specs/m9_google_drive_ingestion.md` §3.3 参照。ローカル取り込みの API 経由トリガは引き続き `BackgroundTasks` のままで変更ありません）。
+
+1. `docker compose up`（`db`/`api` に加えて `redis` サービスも起動します）
+2. 別ターミナルで `make worker`（ARQ worker をホスト上で直接起動。`make web` と同じくコンテナ化しません）
+3. `POST http://localhost:8000/api/ingest/gdrive` を呼ぶ（`POST /api/ingest` と同じ UX で、即座に `ingest_run` の id を返し、実処理は worker がバックグラウンドで実行します）
+
+**動作確認**
+
+- `GET http://localhost:8000/api/ingest/runs` で該当 run の `status` が `running` → `success`（または `error`）に遷移することを確認する
+- チャット画面（`make web` で起動、`http://localhost:3000`）で Drive コーパスに含まれる内容を質問し、回答の出典カードをクリックして、リンクが `file://` ではなく実際の Drive の `webViewLink`（`https://drive.google.com/file/d/...`）を指し、クリックで元の Drive ドキュメントが開くことを確認する（T6 で実装した citation 連携の効果）
 
 対応形式・既知の制約:
 
