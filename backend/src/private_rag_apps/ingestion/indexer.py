@@ -1,5 +1,5 @@
 import time
-from typing import List, Optional, TypedDict, cast
+from typing import Dict, List, NotRequired, Optional, TypedDict, cast
 from uuid import UUID
 
 import voyageai
@@ -12,6 +12,7 @@ from private_rag_apps.models.rag import Chunk, IngestRun, Source
 from .chunker import ChunkResult, chunk_markdown
 from .concurrency import start_run
 from .diff import Action, classify, should_apply_deletions
+from .gdrive_loader import load_drive
 from .loader import Document, load_directory
 
 
@@ -41,6 +42,10 @@ class Stats(TypedDict):
     deleted: int
     skipped: int
     failed_files: List[str]
+    # Drive取り込み限定・任意項目: ショートカット/非対応mimeTypeによりスキップされたアイテム
+    # （gdrive_loader.SkippedItem 相当）を構造化情報として畳み込む。既存キーの意味は変えない
+    # 純粋加算のため、ローカル取り込みの `Stats` 生成コードは変更不要（m9 T4 完了条件）
+    skipped_items: NotRequired[List[Dict[str, str]]]
 
 
 def run_ingestion(db: Session, trigger: str = "cli", force_delete: bool = False) -> IngestRun:
@@ -50,29 +55,29 @@ def run_ingestion(db: Session, trigger: str = "cli", force_delete: bool = False)
     return execute_ingestion(db, run, force_delete)
 
 
+def run_gdrive_ingestion(
+    db: Session, folder_id: str, trigger: str = "cli", force_delete: bool = False
+) -> IngestRun:
+    """running行の作成から一連のGoogle Drive取り込み処理までを同期的に実行する（CLI用）。
+    run_ingestion と同じ start_run→execute_* パターン（多重実行の抑止は source_type に関わらず
+    グローバルに1本のrunning行で行う。m9_google_drive_ingestion.md §4.6）"""
+    run = start_run(db, trigger)
+    return execute_gdrive_ingestion(db, run, folder_id, force_delete)
+
+
 @observe(name="ingest_run")
 def execute_ingestion(db: Session, run: IngestRun, force_delete: bool = False) -> IngestRun:
     """既にrunning行が作成済みのIngestRunを引数に、増分判定・チャンキング・ベクトル化・DB反映を実行する"""
     try:
         docs = load_directory(settings.corpus_dir)
         stats: Stats = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0, "failed_files": []}
-        found_paths: set[str] = set()
+        found_paths = {doc.path for doc in docs}
 
-        for i, doc in enumerate(docs):
-            found_paths.add(doc.path)
-            try:
-                _process_one(db, doc, stats)
-            except Exception as e:
-                print(f"Error processing {doc.path}: {e}")
-                stats["failed_files"].append(doc.path)
-                db.rollback()
+        _process_documents(db, run, stats, docs)
 
-            if (i + 1) % settings.ingest_stats_flush_every == 0:
-                _flush_stats(db, run, stats)
-
-        _flush_stats(db, run, stats)
-
-        _apply_deletion_phase(db, run, stats, found_paths, force_delete)
+        _apply_deletion_phase(
+            db, run, stats, source_type="local_fs", found_keys=found_paths, force_delete=force_delete
+        )
 
         run.stats = dict(stats)
         run.finished_at = utcnow()
@@ -87,28 +92,112 @@ def execute_ingestion(db: Session, run: IngestRun, force_delete: bool = False) -
         raise e
 
 
+@observe(name="ingest_run_gdrive")
+def execute_gdrive_ingestion(
+    db: Session, run: IngestRun, folder_id: str, force_delete: bool = False
+) -> IngestRun:
+    """既にrunning行が作成済みのIngestRunを引数に、Google Driveフォルダ配下の増分判定・
+    チャンキング・ベクトル化・DB反映を実行する。ローダーが gdrive_loader.load_drive() に
+    差し替わり、削除検知が source_type='google_drive' に独立してスコープされる以外は
+    execute_ingestion() と共通のコードパス（_process_documents/_process_one 以降）を通る
+    （m9_google_drive_ingestion.md §4.5, AGENTS.md §3 の worker/cli 同様 ingestion 層は単一入口）。
+    T2由来の GoogleDriveConfigError/AuthError/AccessError も他の例外と同様に run.error として
+    記録し、プロセスをクラッシュさせない"""
+    run.source_type = "google_drive"
+    try:
+        result = load_drive(db, folder_id)
+        stats: Stats = {"added": 0, "updated": 0, "deleted": 0, "skipped": 0, "failed_files": []}
+        if result.skipped:
+            stats["skipped_items"] = [
+                {"name": item.name, "path": item.path, "reason": item.reason} for item in result.skipped
+            ]
+
+        _process_documents(db, run, stats, result.documents)
+
+        _apply_deletion_phase(
+            db,
+            run,
+            stats,
+            source_type="google_drive",
+            found_keys=result.found_external_ids,
+            force_delete=force_delete,
+        )
+
+        run.stats = dict(stats)
+        run.finished_at = utcnow()
+        db.commit()
+        return run
+
+    except Exception as e:
+        run.status = "error"
+        run.error = str(e)
+        run.finished_at = utcnow()
+        db.commit()
+        raise e
+
+
+def _process_documents(db: Session, run: IngestRun, stats: Stats, docs: List[Document]) -> None:
+    """docsを順に_process_oneへ渡し、1件の失敗を隔離しつつ定期的にstatsを永続化する
+    （execute_ingestion/execute_gdrive_ingestion で共有するループ本体）"""
+    for i, doc in enumerate(docs):
+        try:
+            _process_one(db, doc, stats)
+        except Exception as e:
+            print(f"Error processing {doc.path}: {e}")
+            stats["failed_files"].append(doc.path)
+            db.rollback()
+
+        if (i + 1) % settings.ingest_stats_flush_every == 0:
+            _flush_stats(db, run, stats)
+
+    _flush_stats(db, run, stats)
+
+
 def _apply_deletion_phase(
-    db: Session, run: IngestRun, stats: Stats, found_paths: set[str], force_delete: bool
+    db: Session,
+    run: IngestRun,
+    stats: Stats,
+    source_type: str,
+    found_keys: set[str],
+    force_delete: bool,
 ) -> None:
-    """削除安全弁を判定し、許可されれば削除を反映する。
+    """削除安全弁を判定し、許可されれば削除を反映する。source_type ごとに完全に独立して
+    判定する（alive_count・found_count・削除対象クエリのいずれも他方のsource_typeを一切
+    参照しない）。ローカル/Driveの走査結果とDB生存ソースの突き合わせが混同されると、
+    一方の取り込み実行がもう一方のソースを誤って論理削除しかねない
+    （m9_google_drive_ingestion.md §8 の重要リスク）。
     安全弁が発動しても追加/更新は既にcommit済みのため、run.statusはsuccessのまま維持し、
     理由をrun.errorに記録する（実行全体の失敗と区別する。m4_ingestion_and_demo.md §4.3）"""
-    alive_count = db.query(Source).filter(Source.deleted_at.is_(None)).count()
+    alive_count = (
+        db.query(Source).filter(Source.source_type == source_type, Source.deleted_at.is_(None)).count()
+    )
     allowed, reason = should_apply_deletions(
         alive_count=alive_count,
-        found_count=len(found_paths),
+        found_count=len(found_keys),
         ratio=settings.ingest_delete_guard_ratio,
         force=force_delete,
     )
     run.status = "success"
     if allowed:
-        stats["deleted"] = _apply_deletions(db, found_paths)
+        stats["deleted"] = _apply_deletions(db, source_type, found_keys)
     else:
         run.error = f"delete phase aborted: {reason}"
 
 
 def _process_one(db: Session, doc: Document, stats: Stats) -> None:
-    existing = db.query(Source).filter(Source.path == doc.path).first()
+    """既存ソースの照合ロジックを doc.source_type に応じて分岐する（ローカル: path一致 /
+    Drive: external_id一致。m9_google_drive_ingestion.md §4.5）。classify() 呼び出し以降の
+    チャンキング・埋め込み・DB反映は source_type に関わらず完全に共通のコードパスを通る"""
+    if doc.source_type == "local_fs":
+        existing = (
+            db.query(Source).filter(Source.path == doc.path, Source.source_type == "local_fs").first()
+        )
+    else:
+        existing = (
+            db.query(Source)
+            .filter(Source.external_id == doc.external_id, Source.source_type == doc.source_type)
+            .first()
+        )
     action = classify(
         existing_hash=existing.content_hash if existing else None,
         existing_deleted_at=existing.deleted_at if existing else None,
@@ -138,6 +227,11 @@ def _process_one(db: Session, doc: Document, stats: Stats) -> None:
             title=doc.title,
             content_hash=doc.content_hash,
             source_updated_at=doc.updated_at,
+            # ローカルDocumentはsource_type="local_fs"/external_id=None/source_url=Noneが既定値のため、
+            # ローカル取り込みの挙動は変わらない（m9_google_drive_ingestion.md §4.5）
+            source_type=doc.source_type,
+            external_id=doc.external_id,
+            source_url=doc.source_url,
         )
         db.add(new_source)
         db.flush()
@@ -152,6 +246,11 @@ def _process_one(db: Session, doc: Document, stats: Stats) -> None:
     existing.title = doc.title
     existing.content_hash = doc.content_hash
     existing.source_updated_at = doc.updated_at
+    # path/source_urlはDrive側の識別キーではない表示用フィールドのため、Drive上でのファイル
+    # 移動/リネーム（pathの変化）・webViewLinkの変化があれば追随させる。ローカルは常に
+    # doc.path == existing.path（識別キーそのもの）/doc.source_url == None のため無害
+    existing.path = doc.path
+    existing.source_url = doc.source_url
     existing.deleted_at = None
     existing.updated_at = utcnow()
     _insert_chunks(db, existing.id, chunks, embeddings)
@@ -174,8 +273,22 @@ def _insert_chunks(
         )
 
 
-def _apply_deletions(db: Session, found_paths: set[str]) -> int:
-    missing = db.query(Source).filter(Source.deleted_at.is_(None), Source.path.notin_(found_paths)).all()
+def _apply_deletions(db: Session, source_type: str, found_keys: set[str]) -> int:
+    """`source_type` にスコープした削除検知本体。ローカルは path、Driveは external_id を
+    識別キーとして使う（sources.path はDrive側でフォルダ内重複を許容するため識別キーに
+    使えない。m9_google_drive_ingestion.md §4.2）。source_type フィルタは
+    Source.deleted_at.is_(None) と同様に必須条件であり、外すと他source_typeの生存ソースを
+    巻き込んで論理削除してしまう"""
+    key_column = Source.path if source_type == "local_fs" else Source.external_id
+    missing = (
+        db.query(Source)
+        .filter(
+            Source.source_type == source_type,
+            Source.deleted_at.is_(None),
+            key_column.notin_(found_keys),
+        )
+        .all()
+    )
     now = utcnow()
     for source in missing:
         source.deleted_at = now
