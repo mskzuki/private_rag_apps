@@ -56,11 +56,11 @@
 4. ダウングレード（`downgrade()`）を実装し、ロールバック手順を確認する
 
 **完了条件:**
-- [ ] `alembic upgrade head` が既存データに対してエラーなく適用できる（既存ローカルソースは全て `source_type='local_fs'` になる）
-- [ ] `alembic downgrade -1` でロールバックできる
-- [ ] 同一 `path` を持つ複数の Drive ソース（`source_type='google_drive'`）が共存できることをテストで確認（パーシャルユニークインデックスの検証）
-- [ ] ローカルソースの `path` 一意性制約が従来通り機能することをテストで確認（リグレッション）
-- [ ] 既存の全テストがリグレッションゼロで通過
+- [x] `alembic upgrade head` が既存データに対してエラーなく適用できる（既存ローカルソースは全て `source_type='local_fs'` になる） → **達成**（`test_migration_drive_source_fields.py::TestMigrationCycle::test_upgrade_head_marks_existing_local_sources_as_local_fs` で、使い捨てPostgres DBに0003まで適用→旧スキーマでレガシー行をINSERT→`alembic upgrade head`→`source_type='local_fs'`/`external_id`・`source_url`はNULLを確認。加えて実際の `rag_test` DBにも `alembic upgrade head` を適用しエラーなく完了（`Running upgrade 0003 -> 0004, drive_source_fields`））
+- [x] `alembic downgrade -1` でロールバックできる → **達成**（`test_downgrade_minus_one_restores_local_path_uniqueness` で新規3カラム削除・`sources_path_key` 復元・ローカルpath一意性の再現を確認。加えて重複pathを持つDrive行が存在する場合にダウングレードがunique violationで失敗し、トランザクショナルDDLにより0004のままアトミックにロールバックされることも `test_downgrade_minus_one_fails_atomically_when_drive_rows_share_path` で確認（既知のダウングレード制約としてマイグレーションファイル内にコメントで明記））
+- [x] 同一 `path` を持つ複数の Drive ソース（`source_type='google_drive'`）が共存できることをテストで確認（パーシャルユニークインデックスの検証） → **達成**（`TestPartialUniqueIndexes::test_google_drive_sources_can_share_path`）
+- [x] ローカルソースの `path` 一意性制約が従来通り機能することをテストで確認（リグレッション） → **達成**（`TestPartialUniqueIndexes::test_local_fs_sources_still_enforce_path_uniqueness`）
+- [x] 既存の全テストがリグレッションゼロで通過 → **達成**（`make test` で132件全通過、`make lint`（ruff/mypy）もclean。新規追加分は上記4テストを含む計7件）
 
 **スコープ外:** ローダー・indexer 統合（T3/T4）。
 
