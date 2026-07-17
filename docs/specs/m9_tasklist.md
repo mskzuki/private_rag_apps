@@ -139,11 +139,11 @@
 5. `cli/main.py` に `ingest-gdrive` サブコマンドを追加し、`Makefile` に `ingest-gdrive` ターゲットを追加する
 
 **完了条件:**
-- [ ] `execute_gdrive_ingestion()` がチャンキング以降で `execute_ingestion()` と共通のコードパスを通ることをコードレビューで確認（二重実装がない）
-- [ ] ソース照合が `source_type` に応じて正しく分岐することをテストで確認（同一 `path` のローカル/Driveソースが誤って同一視されない）
-- [ ] 削除安全弁・削除検知がソース種別ごとに独立して判定されることをテストで確認（例: ローカルソースが大量に見えても Drive ソースの削除判定に影響しない、逆も同様）
-- [ ] `make ingest-gdrive` がモック化した Drive クライアントに対して一気通貫（探索→取り込み→DB反映）で動作する
-- [ ] 既存のローカル取り込み（`make ingest`/`make demo`、既存テスト）がリグレッションゼロで通過する
+- [x] `execute_gdrive_ingestion()` がチャンキング以降で `execute_ingestion()` と共通のコードパスを通ることをコードレビューで確認（二重実装がない） → **達成**（両オーケストレーション関数は新設した共有ループ `_process_documents()` → `_process_one()` を呼ぶ。`classify()` 呼び出し以降（INSERT/REPLACE/REVIVE_ONLY/SKIP・`chunk_markdown`・`_embed_documents`・`_insert_chunks`）は `source_type` による分岐が一切ない単一コードパス。`TestSharedChunkingPath` でDrive Documentのinsertがチャンキング/埋め込み/Chunk生成を経ることを実行結果で確認）
+- [x] ソース照合が `source_type` に応じて正しく分岐することをテストで確認（同一 `path` のローカル/Driveソースが誤って同一視されない） → **達成**（`test_ingestion_indexer_gdrive.py::TestSourceTypeScopedMatching`。同一path文字列のローカル/Driveソースが別レコードとして扱われること、2回目のDrive実行でpathが変わってもexternal_id一致で同一Sourceが更新されることを確認）
+- [x] 削除安全弁・削除検知がソース種別ごとに独立して判定されることをテストで確認（例: ローカルソースが大量に見えても Drive ソースの削除判定に影響しない、逆も同様） → **達成**（`TestDeletionPhaseSourceTypeIsolation`の3テスト。ローカルのみの実行がDriveソースを誤って論理削除しないこと・Driveのみの実行がローカルソースを誤って論理削除しないこと・ローカル20件の生存がDrive側の削除安全弁の生存数比率に混入し正当な削除を誤ってブロックしないことを確認。`_apply_deletion_phase`/`_apply_deletions`を一時的に`source_type`スコープなしの旧ロジック相当に戻して実行し、この3テストが厳密に失敗する（RED）→ 修正版に戻すと通過する（GREEN）ことを確認済み。詳細はタスクレポート参照）
+- [x] `make ingest-gdrive` がモック化した Drive クライアントに対して一気通貫（探索→取り込み→DB反映）で動作する → **達成**（`TestCliEndToEnd::test_ingest_gdrive_cli_entrypoint_runs_end_to_end_with_mocked_drive_client`。`make ingest-gdrive`が呼ぶのと同一の`cli.main.ingest_gdrive()`を、Drive境界`gdrive_loader.GoogleDriveClient`のみモックして直接呼び出し、探索→classify→チャンキング→埋め込み→`Source`/`Chunk`/`IngestRun`へのDB反映までを実DB（rag_test）で確認。実認証情報を要するプロセス起動としての`make ingest-gdrive`実行そのものは検証していない）
+- [x] 既存のローカル取り込み（`make ingest`/`make demo`、既存テスト）がリグレッションゼロで通過する → **達成**（`make test`で178件全て通過。既存の`test_ingestion_indexer.py`/`test_cli.py`は無変更のアサーションのまま全通過）
 
 **スコープ外:** ARQ/API 経由のトリガ（T5）。
 
