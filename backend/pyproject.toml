@@ -21,6 +21,7 @@ dependencies = [
     "google-api-python-client>=2.198.0",
     "google-auth>=2.56.0",
     "google-auth-httplib2>=0.4.0",
+    "arq>=0.28.0",
 ]
 
 [dependency-groups]
