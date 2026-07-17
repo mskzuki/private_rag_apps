@@ -25,8 +25,17 @@
 4. ローカル Redis（docker-compose 経由）が問題なく起動することを確認する
 
 **完了条件:**
-- [ ] 上記 4 点の確認結果がタスクノートに記録されている
-- [ ] 依存関係の競合や重大な前提の誤りが見つかった場合、対応方針（スペック修正 or 実装で吸収）をタスクノートに記録してから T1 に進む
+- [x] 上記 4 点の確認結果がタスクノートに記録されている
+- [x] 依存関係の競合や重大な前提の誤りが見つかった場合、対応方針（スペック修正 or 実装で吸収）をタスクノートに記録してから T1 に進む → 該当なし。4点すべてがスペックの前提と整合していることを確認した（`0003_chat_history.py` docstringの軽微な表記不整合のみ検出したが機能的な問題はなく、T1着手時の申し送り事項として下記2.に記録済み）
+
+**タスクノート（2026-07-17 記録）:**
+1. **依存関係:** `backend/` で `uv add --no-sync arq google-api-python-client google-auth google-auth-httplib2` を実行し解決可能性を確認（利用中の `uv 0.11.27` に `--dry-run` フラグが無いため `--no-sync` で解決のみ行った）。**`Resolved 113 packages in 201ms`、エラー・警告なし**。transitiveに追加される新規パッケージは17個（`arq`, `cffi`, `cryptography`, `google-api-core`, `google-api-python-client`, `google-auth`, `google-auth-httplib2`, `hiredis`, `httplib2`, `proto-plus`, `pyasn1`, `pyasn1-modules`, `pycparser`, `pyjwt`, `pyparsing`, `redis`, `uritemplate`）で、既存の `openai`/`voyageai`/`langfuse`/`langgraph`/`sqlalchemy` 等との衝突は無い。確認後 `git checkout -- pyproject.toml` で復元し、`uv.lock`（`.gitignore` で非追跡）はバックアップから復元して作業前の状態に戻した（`git status` clean を確認済み）。
+2. **`down_revision`:** `backend/alembic/versions/0003_chat_history.py:14` の `revision: str = '0003'` を確認。よって新規 `0004_drive_source_fields.py` の `down_revision` は **`'0003'`** とする。なお同ファイル冒頭のdocstring（3行目 `Revision ID: a4188e3436db`）は実際に使われる `revision` 変数の値と一致しない古い表記（`alembic revision` 初回生成時のハッシュ値が、手動で連番 `'0003'` に書き換えた後も docstring 側だけ残存したものと推測。`0001`/`0002` の docstring は revision 変数と一致しており `0003` のみの表記ゆれ）。Alembic自体は docstring ではなく `revision`/`down_revision` 変数でチェーンを解決するため機能的な問題はないが、**T1で `0004_drive_source_fields.py` を書く際はこの表記ゆれを踏襲せず、docstring も `Revision ID: 0004` / `Revises: 0003` で実値と揃えること**（軽微な申し送り事項）。
+3. **`models/rag.py` とスペック §4.2 の整合性:** 齟齬なし。
+   - `Source.source_updated_at`（`models/rag.py:21`）: `Mapped[Optional[datetime.datetime]] = mapped_column(TIMESTAMP(timezone=True))`。DDL上も `timestamptz`（`0001_init.py:33`）で、稼働中の dev DB (`\d sources`) でも `timestamp with time zone` と実測確認済み。§4.2 が想定する「Driveの `modifiedTime` をそのまま格納する」用途と型面で矛盾しない。
+   - `Chunk.metadata_`（`models/rag.py:36`）: Python属性名は `metadata_`（SQLAlchemy宣言的Baseが `metadata` を予約しているため）だが、`mapped_column("metadata", JSONB, ...)` によりDBカラム名は `metadata`（稼働中DBの `\d chunks` でも確認）。ただし**スペック §4.2 のDDLは `sources`/`ingest_runs` のみを変更し `chunks` には触れない**（spec本文を grep しても "metadata" の言及なし）ため、M9のマイグレーションには影響しない。将来 `chunks.metadata` に触れる実装が出た場合の命名注意点として記録するのみ。
+   - 制約名の実値確認（稼働中 dev DB、`private_rag_apps-db-1` コンテナ、読み取りのみ）: `sources` の `UNIQUE(path)` 制約名は実際に `sources_path_key`（Postgresのデフォルト命名規則どおり）で、§4.2 の `ALTER TABLE sources DROP CONSTRAINT sources_path_key;` はそのまま成立する。`ingest_runs.trigger` のCHECK制約名は `ingest_runs_trigger_check`（値 `cli`/`api`/`demo`）で、§4.2 が「変更しない」とする前提と一致。
+4. **Redis起動確認:** `docker-compose.yml` の変更はT5の責務のためT0では変更せず、非破壊的な方法で2通り確認した。(a) `docker run --name m9-t0-redis-check -p 16379:6379 redis:7-alpine`、(b) スクラッチパッドに置いた使い捨て `docker-compose` ファイル（`services: redis: image: redis:7-alpine`、プロジェクト名 `m9-t0-check` で本体のcomposeプロジェクトと分離）。いずれも正常起動し `redis-cli ping` が `PONG` を返した。確認後 `docker compose ... down` / `docker rm -f` でコンテナ・ネットワークを削除し、`git diff docker-compose.yml` が空（無変更）であることを確認済み。ローカル既定ポート `6379` も未使用であることを確認した。
 
 **スコープ外:** 実際の GCP サービスアカウント作成（T2/T8 で必要になった時点で対応）。
 
