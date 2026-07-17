@@ -16,6 +16,7 @@ from arq.connections import RedisSettings
 
 from private_rag_apps.core.db import get_db, SessionLocal
 from private_rag_apps.core.config import settings
+from private_rag_apps.core.time import utcnow
 from private_rag_apps.models.rag import Chunk, Conversation, IngestRun, Message, Source
 from private_rag_apps.ingestion.concurrency import (
     IngestAlreadyRunningError,
@@ -335,7 +336,19 @@ async def trigger_ingest_gdrive(force_delete: bool = False, db: Session = Depend
         raise HTTPException(status_code=409, detail=f"ingestion already running: {e}")
 
     run_id = str(run.id)
-    await _enqueue_gdrive_job(run_id, settings.drive_folder_id, force_delete)
+    try:
+        await _enqueue_gdrive_job(run_id, settings.drive_folder_id, force_delete)
+    except Exception as e:
+        # start_run()で作成済みのrunning行は、enqueue自体が失敗すると誰にも処理されない
+        # まま取り残される（実行中ずっと有効な排他をrunning行の存在そのものが担っているため、
+        # 放置するとreap_stale_runningがingest_stale_running_sec後に回収するまでの間、
+        # 他の取り込み（ローカル/Drive双方）がすべてブロックされ続ける）。
+        # execute_gdrive_ingestion()自身の無条件error確定パターンと同じ形でここも確定させる
+        run.status = "error"
+        run.error = str(e)
+        run.finished_at = utcnow()
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"failed to enqueue gdrive ingestion job: {e}")
     return {"id": run_id, "status": run.status, "trigger": run.trigger}
 
 

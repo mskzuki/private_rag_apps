@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+import private_rag_apps.api.main
 from private_rag_apps.api.main import app
 from private_rag_apps.core.db import SessionLocal
 from private_rag_apps.models.rag import IngestRun
@@ -51,6 +52,49 @@ class TestPostIngestGdrive:
             mock_enqueue.assert_called_once()
         finally:
             _cleanup(run_ids=[body.get("id")] if body.get("id") else None)
+
+    def test_marks_run_as_error_when_enqueue_fails(self):
+        """RedisダウンなどでARQへのenqueue自体が失敗した場合、start_run()で作成済みの
+        running行をerror状態に確定させる（放置するとreap_stale_runningが回収するまでの間
+        他の取り込みがすべてブロックされ続けるため）"""
+        created_run_ids = []
+        real_start_run = private_rag_apps.api.main.start_run
+
+        def _capturing_start_run(db, trigger):
+            run = real_start_run(db, trigger=trigger)
+            created_run_ids.append(run.id)
+            return run
+
+        run_id = None
+        try:
+            with (
+                patch(
+                    "private_rag_apps.api.main.start_run",
+                    side_effect=_capturing_start_run,
+                ),
+                patch(
+                    "private_rag_apps.api.main._enqueue_gdrive_job",
+                    side_effect=ConnectionError("redis unreachable"),
+                ) as mock_enqueue,
+            ):
+                response = client.post("/api/ingest/gdrive")
+
+            assert response.status_code == 500
+            mock_enqueue.assert_called_once()
+            assert len(created_run_ids) == 1
+            run_id = created_run_ids[0]
+
+            db = SessionLocal()
+            run = db.query(IngestRun).filter(IngestRun.id == run_id).first()
+            db.close()
+
+            assert run is not None
+            assert run.status == "error"
+            assert run.error is not None
+            assert "redis unreachable" in run.error
+            assert run.finished_at is not None
+        finally:
+            _cleanup(run_ids=[run_id] if run_id else None)
 
     def test_rejects_with_409_when_already_running(self):
         db = SessionLocal()
