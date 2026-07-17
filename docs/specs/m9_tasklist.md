@@ -198,12 +198,14 @@
 4. `frontend/src/components/Citations.tsx`: `source_type === "google_drive"` の場合 `c.source_url`（`webViewLink`）を使うよう `href` 分岐を追加する。ローカルの場合は既存の `file://${c.path}` のまま
 5. `GET /api/sources` に `source_type`/`source_url` を含める
 
+**実装メモ:** `Citation`/`ScoredChunk`/generator の citations 組み立てには、上記の `source_type`/`source_id` に加えて `source_url` も追加した（作業項目4のフロント側分岐が `c.source_url` を直接参照するため、フロントが `GET /api/sources` を別途叩かずに citation payload 自体だけでリンクを解決できるようにする、というスペック §4.7 の明示チェーン制約を満たすのに必須と判断）。
+
 **完了条件:**
-- [ ] 既存の citation payload フィールド（`n`/`title`/`path`/`heading`/`chunk_id`）に変更がないこと（M7 T3/T6 と同じ手法の stub 構造検証テストで担保）
-- [ ] ローカルソース・Driveソースそれぞれで citations に正しい `source_type`/`source_id` が入ることをテストで確認
-- [ ] `Citations.tsx` の href 分岐がローカル/Driveそれぞれで正しいリンクになることをフロントエンドテストで確認
-- [ ] `GET /api/sources` のレスポンスに `source_type`/`source_url` が含まれることを確認（ローカルソースでは `source_url` が null になることを含む）
-- [ ] 既存の citation 関連テスト（SSE構造検証・generator・API）がリグレッションゼロで通過
+- [x] 既存の citation payload フィールド（`n`/`title`/`path`/`heading`/`chunk_id`）に変更がないこと（M7 T3/T6 と同じ手法の stub 構造検証テストで担保）
+- [x] ローカルソース・Driveソースそれぞれで citations に正しい `source_type`/`source_id` が入ることをテストで確認
+- [x] `Citations.tsx` の href 分岐がローカル/Driveそれぞれで正しいリンクになることをフロントエンドテストで確認
+- [x] `GET /api/sources` のレスポンスに `source_type`/`source_url` が含まれることを確認（ローカルソースでは `source_url` が null になることを含む）
+- [x] 既存の citation 関連テスト（SSE構造検証・generator・API）がリグレッションゼロで通過
 
 **スコープ外:** 引用表示自体の高度化（回答の根拠ハイライト等。スペック Out of scope）。
 
