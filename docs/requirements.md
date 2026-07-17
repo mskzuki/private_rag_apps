@@ -1,6 +1,6 @@
 # Private RAG Apps — 要件定義書 (requirements.md)
 
-> v0.5。アーキテクチャの正は `architecture.md`、データモデルの正は `db_design.md`（本書は概要のみ記載）。
+> v0.7。アーキテクチャの正は `architecture.md`、データモデルの正は `db_design.md`（本書は概要のみ記載）。
 
 ---
 
@@ -45,7 +45,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 ### Out of scope (v1) — 将来拡張として §11 に明示
 
-- **SaaS コネクタ**（Notion / Slack / Google Drive）と **OAuth 認証**
+- **SaaS コネクタ**（Notion / Slack）と **OAuth 認証**（Google Drive の限定的な取り込み — 単一固定フォルダ・サービスアカウント認証・OAuth 不使用 — は M9 でスコープイン済み。§11 参照）
 - マルチユーザー / 組織テナント
 - **ドキュメント単位の ACL（権限考慮検索）**
 - **エージェンティック RAG**（多段検索・クエリ分解・自己評価ループ）
@@ -269,8 +269,9 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 ## 11. 将来拡張
 
-- **SaaS コネクタ**(Notion / Slack / Google Drive)+ **OAuth 認証・トークン管理**
+- **SaaS コネクタ**(Notion / Slack)+ **OAuth 認証・トークン管理**
   - 導入時は増分同期カーソル・接続管理・バックグラウンドジョブ(ARQ)もセットで再検討
+- **Google Drive の限定的な取り込み**(単一固定フォルダ・サービスアカウント認証・OAuth 不使用)は **M9 でスコープイン済み**（`docs/specs/m9_google_drive_ingestion.md`）。API 経由トリガのみプロセス非依存の再試行のため ARQ/Redis を併用する（スケジューリングは行わない）。複数フォルダ・複数 Drive アカウントの接続管理、OAuth ベースの認可は引き続き将来拡張として残る
 - **ACL 権限考慮検索**(マルチユーザー化の目玉。ドキュメント単位のアクセス制御をソースから同期)
 - **エージェンティック RAG**(クエリ分解 / 多段検索 / 自己評価ループ)
 - **PDF / Office 取り込み**(パーサ導入)
@@ -295,6 +296,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.7 | 2026-07-17 | M9 スペック起票に伴うスコープ改訂: §2/§11 の「SaaS コネクタ」除外リストから Google Drive を外し、限定版（単一固定フォルダ・サービスアカウント認証・OAuth 不使用・API 経由トリガのみ ARQ/Redis 併用）を M9 でスコープイン済みと明記（`docs/specs/m9_google_drive_ingestion.md`）。Notion/Slack・複数フォルダ管理・OAuth ベース認可は引き続き将来拡張。ヘッダのバージョン表記の記載不整合（v0.5 表記 vs 変更履歴最新 v0.6）も本版で是正 |
 | v0.6 | 2026-07-13 | §12 Definition of Success の各項目をクローズ。デモGIF・Langfuseスクショ・別マシン実測は意図的な先送りとして注記（根拠は `docs/decisions.md`） |
 | v0.5 | 2026-07-09 | §7 技術選定をフロントエンド（§7.1）/ バックエンド（§7.2）の 2 表に分割（内容変更なし） |
 | v0.4 | 2026-07-08 | 全体レビュー反映: Python を 3.13 に更新（AGENTS v0.6 との矛盾解消）。**Langfuse を任意化**（NFR-4 no-op / NFR-8 必須アカウントから除外）。M2 スペック追従: NFR-2 に初回/フォローアップ別計測を明記。M3 スペック追従: NFR-1/§9 に **path レベル正解（chunk_id 非依存）**・`EVAL_TOP_K` 分離・**検索ハード/生成ソフトのゲート**・committed baseline・CI トリガ範囲拡大を反映。FR-4 に棄権（abstain）の実体を注記。§10 M0 に**基本 CI(lint/test)** を追加。§12 に Eval レポート公開パスを明記。ヘッダのドラフト表記を除去 |

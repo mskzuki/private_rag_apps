@@ -138,10 +138,36 @@
 
 ---
 
+## Google Drive 取り込み（M9）
+
+### サービスアカウント認証（vs OAuth）
+
+- **決定**: Google Drive へのアクセス認証にサービスアカウントを採用する。OAuth（installed app フロー）は採用しない。
+- **背景/代替案**: requirements.md が SaaS コネクタ・OAuth を v1 スコープ外とした理由は「単一ユーザー MVP に OAuth フロー（アプリ登録・コールバック・トークン更新）は過剰」。OAuth を使う場合、この除外理由がそのまま該当してしまう。
+- **根拠**: サービスアカウントは対象フォルダをメールアドレスに共有するだけで動作し、同意画面・コールバック・トークンリフレッシュのロジックを一切実装せずに済む。単一固定フォルダという M9 のスコープと相性が良く、CLI から何度でも非対話で再実行できる。
+- **詳細**: [m9_google_drive_ingestion.md §3.4/§4.3](specs/m9_google_drive_ingestion.md#34-oauth-を使わない)
+
+### identity key の一般化（source_type + external_id）
+
+- **決定**: `sources.path` の単一 `UNIQUE` 制約を廃止し、`source_type`（`local_fs`/`google_drive`）ごとのパーシャルユニークインデックスに置き換える。ローカルは `path`、Drive は `external_id`（Drive file ID）を一意性キーとする。
+- **背景/代替案**: Google Drive は同一フォルダ内でのファイル名重複を許容するため、Drive ソースを疑似パスで一意識別することはできない。`external_id`（Drive file ID）はリネーム・フォルダ移動があっても不変であり、識別キーとして頑健。
+- **根拠**: パーシャルユニークインデックスにより、ローカルソースの一意性制約は実質的に変更せず完全後方互換を保ちながら、Drive ソースに適した識別方式を追加できる。
+- **詳細**: [m9_google_drive_ingestion.md §3.2/§4.2](specs/m9_google_drive_ingestion.md#32-identity-key-の一般化後方互換を維持)
+
+### ARQ/Redis は API 経由トリガの堅牢化のみに限定
+
+- **決定**: ARQ/Redis ジョブキューを導入するが、対象は Google Drive 取り込みの **API 経由トリガ（`POST /api/ingest/gdrive`）のみ**。CLI 経由トリガ・ローカル取り込みは引き続き同期実行/`BackgroundTasks` のまま変更しない。スケジューリング（定期自動同期）は行わない。
+- **背景/代替案**: requirements.md §11 は将来 SaaS コネクタ導入時に ARQ/Redis の再検討を想定していたが、「ジョブキューを持たない」という既存決定（本ファイル前掲）はスコープの大きな逆転になる。ユーザーとの合意により、目的を「定期自動同期」ではなく「API プロセスの再起動をまたいだ再試行・状態非依存の実行」に限定した。
+- **根拠**: 外部 API 呼び出し（Drive API）を伴う処理はローカル FS 読み込みと異なり、ネットワーク起因の失敗・長時間化の可能性があり、プロセス再起動への耐性の価値が高い。一方 CLI 経由トリガはコマンド実行プロセス自体が寿命であり、BackgroundTasks 由来の弱点（API プロセス再起動でタスクが失われる）が元々当てはまらないため、変更する理由がない。
+- **詳細**: [m9_google_drive_ingestion.md §3.3/§4.6](specs/m9_google_drive_ingestion.md#33-arq-は api-経由トリガの堅牢化のみに使う)
+
+---
+
 ## 変更履歴
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.5 | 2026-07-17 | M9（Google Drive フォルダ取り込み）スペック起票に伴い、サービスアカウント認証・identity key の一般化・ARQ/Redis を API 経由トリガに限定する判断を追記 |
 | v0.4 | 2026-07-14 | 開発DB/テストDB分離（rag_dev/rag_test）を実装反映。DB作成・`make test`のDATABASE_URL固定まで完了 |
 | v0.3 | 2026-07-14 | 開発DB/テストDB分離（rag_dev/rag_test）の決定を追記。M5・M6で計2回発生した、テスト実行がデモ用DBを誤って初期化する事故が背景 |
 | v0.2 | 2026-07-13 | M5クローズにあたり、スクショ/GIF/別マシン実測/CI実行確認を意図的に先送りした判断を追記 |
