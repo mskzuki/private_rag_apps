@@ -13,6 +13,7 @@
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.2 | 2026-07-17 | レビュー反映: (1) ARQ worker プロセスの起動方法が未規定だった問題を修正。§1/§4.8 に `make worker`（ローカルプロセス起動、`make web` と同じパターン）を追加 (2) 新設パッケージ `worker/` が AGENTS.md §3 の依存方向ルールに反映されていなかった問題を修正。§9 に AGENTS.md §3 への `worker/` 追加を記載（実ファイルは同時に改訂済み） |
 | v0.1 | 2026-07-17 | 初版。ユーザーとの壁打ちで番号衝突（M8 は `m7_adaptive_routing.md` で clarify/HITL/LLM grader 候補として使用済み → 本機能は M9 とする）・スコープ改訂方針・認証方式（サービスアカウント）・ジョブキュー方針（ARQ/Redis を API 経由トリガの堅牢化目的でのみ導入）を確定 |
 
 ---
@@ -42,7 +43,7 @@
 - 増分再取り込み: 既存の `content_hash` 比較（`ingestion/diff.py::classify()`）をそのまま再利用。Drive 固有の最適化として `modifiedTime` による事前フィルタ（変更が無ければダウンロードそのものを省略しコスト削減）を追加
 - 削除反映: フォルダ配下から消えたファイルの論理削除（既存の削除安全弁 `INGEST_DELETE_GUARD_RATIO` をそのまま再利用）
 - 出典（citation）: Drive file ID（`external_id`）と `webViewLink`（`source_url`）を `sources` に保存し、引用カードから元の Drive ドキュメントに直接アクセスできるようにする（ユーザー要望）
-- トリガ: CLI（`make ingest-gdrive`、同期実行・既存パターン踏襲） + API（`POST /api/ingest/gdrive`、ARQ/Redis 経由のジョブ実行）
+- トリガ: CLI（`make ingest-gdrive`、同期実行・既存パターン踏襲） + API（`POST /api/ingest/gdrive`、ARQ/Redis 経由のジョブ実行）。ARQ worker プロセスの起動用に `make worker` を新設する（§4.8）
 - `requirements.md`・`AGENTS.md` のスコープ記述改訂（§9）
 
 **Out of scope (M9 → 将来検討)**
@@ -221,8 +222,9 @@ CREATE UNIQUE INDEX sources_external_id_unique_gdrive
 | CLI | `make ingest-gdrive` → `cli.main ingest-gdrive --trigger cli` | 同期実行（既存ローカル ingest と同じ） |
 | API | `POST /api/ingest/gdrive` | `ingest_runs` の `running` 行を同期作成 → ARQ へ enqueue |
 | API（進捗確認） | `GET /api/ingest/runs`（既存を再利用） | ソース種別に関わらず一覧表示 |
+| Worker | `make worker` → `cd backend && uv run arq private_rag_apps.worker.settings.WorkerSettings` | ローカルプロセスとして起動（`make web` と同じパターン。専用の docker イメージは作らない） |
 
-`make ingest-gdrive`（CLI経由）は呼び出しプロセス内で完結するため、**Redis・`make worker` の起動は不要**。Redis/worker は `POST /api/ingest/gdrive`（API経由）を使う場合にのみ必要になる。
+`make ingest-gdrive`（CLI経由）は呼び出しプロセス内で完結するため、**Redis・`make worker` の起動は不要**。Redis/worker は `POST /api/ingest/gdrive`（API経由）を使う場合にのみ必要になる。`make worker` は `api`（`docker compose up --build api`）とは異なり、`web`（`cd frontend && pnpm dev`）と同様にホスト上で直接プロセスを起動する方式とする（ARQ worker は Redis/DB/外部APIへの接続のみが必要でコンテナ化の恩恵が小さいこと、`docker-compose.yml` に専用サービスを追加する保守コストを避けることを理由に、ローカル起動をデフォルトとする）。`docker-compose.yml` には Redis サービスのみ追加し、worker 用サービスは追加しない。
 
 既存 `AGENTS.md` の `make ingest CORPUS=path/` はドキュメント上の記載のみで実際には Makefile 変数として配線されていない（`CORPUS_DIR` は `.env` 経由）。M9 の新規ターゲットはこの不整合を踏襲せず、`DRIVE_FOLDER_ID` は `.env` 経由の設定のみとし、Makefile 変数展開には依存しない設計とする。
 
@@ -298,7 +300,8 @@ CREATE UNIQUE INDEX sources_external_id_unique_gdrive
 
 **`AGENTS.md`**
 - §1: 「SaaS コネクタ（Notion/Slack/Drive）・OAuth・マルチユーザー・ACL は v1 スコープ外」に、Google Drive の限定的取り込み（M9）が例外である旨を注記
-- §3 依存方向のルール: 「Google Drive API へのアクセスは `ingestion/` のみ」を、ローカル FS アクセスのルールに準じて追加
+- §2 技術スタック: 「ジョブキューは無い」に M9 の ARQ/Redis 例外を注記（レビューで発見した内部矛盾の是正）
+- §3 ディレクトリ構成・依存方向のルール: 「Google Drive API へのアクセスは `ingestion/` のみ」を、ローカル FS アクセスのルールに準じて追加。加えて新設パッケージ `worker/`（ARQ ジョブ関数）をディレクトリ構成に追加し、`worker` は `cli` と同様 `ingestion` を呼ぶ薄い層である旨を依存方向ルールに明記（M7 の `graph` 新設時と同じ改訂パターン。レビューで判明した抜け漏れの是正）
 - §11 DO NOT: ジョブキュー導入禁止の項目に、M9 の API 経由トリガに限定した例外を注記。スコープ外項目（SaaS コネクタ / OAuth / ...）の参照先である `requirements.md` §11 側で Google Drive が例外化されるため、本項目は変更しないが実質的に Google Drive はこの禁止列挙の対象から外れる
 
 `architecture.md`・`db_design.md` への反映は本スペックでは行わない。既存の M4/M7 と同様、実装 PR の中で実装内容を反映する（本スペック §4 が実装までの間の設計の一次ソースとなる）。
@@ -327,11 +330,3 @@ CREATE UNIQUE INDEX sources_external_id_unique_gdrive
 - **定期自動同期の要否**: 今回は明示的にスコープ外としたが、実運用で「取り込み忘れ」が問題になった場合、ARQ の cron ジョブ機能を使えば追加コストは小さい。要否は運用してから再検討する
 - **複数フォルダ対応の要否**: 現状は単一フォルダのみ。複数フォルダが必要になった場合、`DRIVE_FOLDER_ID` を単一値からリストへ拡張する変更が必要（`sources` 側のスキーマ変更は不要と見込む）
 - **ローカル取り込みと Drive 取り込みの同時実行制限**: §4.6 の通りグローバル排他としたが、両者が独立したリソース（ローカル FS vs Drive API）にアクセスする以上、将来的にソース種別ごとの排他に緩和する余地がある。優先度は低い
-
----
-
-## 変更履歴
-
-| version | 日付 | 変更 |
-|---|---|---|
-| v0.1 | 2026-07-17 | 初版 |
