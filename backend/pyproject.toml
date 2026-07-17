@@ -18,6 +18,9 @@ dependencies = [
     "pytest>=8.0",
     "sse-starlette>=3.4.5",
     "langgraph>=1.2.9",
+    "google-api-python-client>=2.198.0",
+    "google-auth>=2.56.0",
+    "google-auth-httplib2>=0.4.0",
 ]
 
 [dependency-groups]
@@ -32,3 +35,9 @@ build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 100
+
+# googleapiclient/httplib2 は型スタブ(py.typed)を配布していないため、この2つのみ個別に無視する
+# （google-auth/google.oauth2 は py.typed 対応済みでそのまま型チェックできる）
+[[tool.mypy.overrides]]
+module = ["googleapiclient.*", "httplib2.*"]
+ignore_missing_imports = true
