@@ -1,7 +1,7 @@
 # M9 タスクリスト: Google Drive フォルダ取り込み (v0.2)
 
-- Spec: `m9_google_drive_ingestion.md`（v0.2）
-- Status: Not started
+- Spec: `m9_google_drive_ingestion.md`（v0.4）
+- Status: Completed（T0-T8 完了。手動スモークテスト（実GCPサービスアカウント + 実Driveフォルダでの動作確認）のみユーザー環境依存のため持ち越し。詳細はT8タスクノート参照）
 - 実行順序: T0 → T1 → T2 → T3 → T4 → T5 → T6 → T7 → T8
 - 規約: 各タスクは「完了条件をすべて満たす」まで次に進まない。スコープ外の変更を行わない。判断に迷う点はタスク内の「実装ノート」の範囲でのみ裁量を認め、それ以外はスペックに差し戻す
 
@@ -251,11 +251,35 @@
 4. 可能であれば実際の GCP サービスアカウント + テスト用 Drive フォルダで手動スモークテストを行う（作成→共有→`make ingest-gdrive`→`make demo`相当の確認→citationリンクの実クリック確認）。ユーザー環境に依存するため実施できない場合は、その旨と再現手順をタスクノートに明記し持ち越しとする
 
 **完了条件:**
-- [ ] `make lint`/`make test` が通過する
-- [ ] README の手順が完結している（追加のGCPアカウント作成以外に読者が迷う箇所がない）
-- [ ] `architecture.md`/`db_design.md` が更新されている
-- [ ] 手動スモークテストを実施したか、実施できない場合はその理由と持ち越しである旨がタスクノートに記録されている
-- [ ] `docs/decisions.md` の M9 関連3件の決定（サービスアカウント認証・identity key一般化・ARQ限定利用）が実装と齟齬がないことを確認
+- [x] `make lint`/`make test` が通過する → **達成**（`make lint`: backend ruff/mypy clean（88 source files）、frontend biome lint/format 通過（既存 shadcn 生成ファイル2件の`useImportType`警告のみ・M9 とは無関係・エラーではなく警告でexit 0）。`make test`: `DATABASE_URL` を `rag_test` に固定した状態で207件全通過、0 failed）
+- [x] README の手順が完結している（追加のGCPアカウント作成以外に読者が迷う箇所がない） → **達成**（T2で追加された設定手順(A)に加え、本タスクで(B)取り込みコマンド（`make ingest-gdrive`／`docker compose up`+`make worker`+`POST /api/ingest/gdrive`）と(C)動作確認（`GET /api/ingest/runs`・citationリンクの実クリック確認）を追記済み（コミット`fe92a7b`）。`backend/.env.example`のDrive設定セクション（5キー）ともREADMEの説明が一致することを確認した）
+- [x] `architecture.md`/`db_design.md` が更新されている → **達成**（§1構成図・§2モジュール表・§6取り込み設計・§7 API設計・§8可観測性・§9設定を`architecture.md`へ、§3 ER図・§4 DDL・§5インデックス・§7増分再取り込みを`db_design.md`へ反映。両ファイルとも変更履歴に本タスクのエントリを追加）
+- [x] 手動スモークテストを実施したか、実施できない場合はその理由と持ち越しである旨がタスクノートに記録されている → **達成**（下記タスクノート参照。実GCPサービスアカウント・実Driveフォルダがこのエージェント実行環境に存在しないため実施不可。再現手順を明記の上、持ち越しとして記録した。M7 T3のVoyage/OpenAIレート制限ブロッカー（`docs/adr/0003_m7_t3_eval_baseline_gap.md`）と同じ「環境依存の制約は正直に明記し、代替措置は取らない」方針を踏襲）
+- [x] `docs/decisions.md` の M9 関連3件の決定（サービスアカウント認証・identity key一般化・ARQ限定利用）が実装と齟齬がないことを確認 → **達成**（齟齬なし。詳細は下記タスクノート参照。編集は不要だった）
+
+**タスクノート（2026-07-17 記録）:**
+
+1. **`docs/decisions.md` M9セクションの実装照合結果（齟齬なし・編集不要）:**
+   - **サービスアカウント認証（vs OAuth）**: T2で`gdrive_client.py`がサービスアカウントJSONキーのみを認証手段として実装（`google.oauth2.service_account.Credentials`）。OAuthフロー（同意画面・コールバック・トークンリフレッシュ）は一切実装していない。決定文の記述と一致。
+   - **identity key の一般化（source_type + external_id）**: T1マイグレーション`0004_drive_source_fields.py`で`sources.path`の`UNIQUE`制約を`sources_path_unique_local`/`sources_external_id_unique_gdrive`のパーシャルユニークインデックス2本に置き換え済み（`test_migration_drive_source_fields.py`でロールバック含め検証済み）。決定文の記述と一致。
+   - **ARQ/Redisは API 経由トリガの堅牢化のみに限定**: T5実装（`worker/`パッケージ、`POST /api/ingest/gdrive`のみがARQへenqueue）を確認。`make ingest-gdrive`（CLI経由）は`cli/main.py`から`execute_gdrive_ingestion()`を直接同期呼び出しし、Redis/ARQに一切依存しない。ローカル取り込み（`POST /api/ingest`）は引き続き`BackgroundTasks`のまま無変更。決定文の記述と一致。
+   - 3件とも実装時期（T1/T2/T5）に仕様からの逸脱が無かったため、`decisions.md`は編集不要と判断した。
+
+2. **手動スモークテストの持ち越しと再現手順:**
+   このエージェント実行環境には実際のGCPプロジェクト・サービスアカウント・Google Driveフォルダへのアクセス手段が無いため、実機での動作確認は実施できなかった。自動テスト（`make test`、Drive APIをモックした計70件超のテスト）でロジックの正しさは検証済みだが、以下は実際のGoogle Drive APIレスポンス・認証フローに対する動作未検証のまま持ち越しとなる。実GCPアクセスを持つ担当者は以下の手順で検証できる。
+
+   **再現手順:**
+   1. **GCPサービスアカウントを作成する**: [Google Cloud Console](https://console.cloud.google.com/) で既存または新規プロジェクトを開き、「APIとサービス」→「ライブラリ」で `Google Drive API` を有効化。「IAMと管理」→「サービスアカウント」→「サービスアカウントを作成」（ロール付与は不要）
+   2. **JSONキーを作成しダウンロードする**: 作成したサービスアカウントの詳細画面 →「鍵」タブ →「鍵を追加」→「新しい鍵を作成」→ JSON形式。ダウンロードしたファイルは`backend/secrets/`等の`.gitignore`対象パスに保存する（リポジトリにコミットしない）
+   3. **`backend/.env`を設定する**: `DRIVE_SERVICE_ACCOUNT_FILE=`（手順2のJSONファイルパス）と`DRIVE_FOLDER_ID=`（テスト用Driveフォルダの、URL末尾のID）を設定する
+   4. **テスト用Driveフォルダを作成し共有する**: Google Driveで新規フォルダを作成し、Markdown/プレーンテキストファイル・Googleドキュメントを数点配置する。フォルダを右クリック→「共有」→ JSONキー内の`client_email`（`xxx@yyy.iam.gserviceaccount.com`）を「閲覧者」として追加する
+   5. **CLI経由で取り込む**: `make ingest-gdrive` を実行し、エラーなく完了することを確認する（`FORCE_DELETE=1 make ingest-gdrive`は初回は不要）
+   6. **チャットで確認する**（`make demo`相当。ただし`make demo`自体はseedコーパス専用のため使わない）: `make api`・`make web`を起動し、`http://localhost:3000`でDriveフォルダに入れた内容について質問し、回答が生成されることを確認する
+   7. **citationリンクを実クリックする**: 回答の出典カードをクリックし、リンク先が`https://drive.google.com/file/d/...`形式の実URL（`webViewLink`）であり、クリックで元のDriveドキュメントが実際に開くことを確認する（T6の実装が正しく機能していることの最終確認）
+   8. **API経由（ARQ/Redis経路）も確認する場合**: `docker compose up`（`redis`サービス起動を含む）→ 別ターミナルで`make worker` → `POST http://localhost:8000/api/ingest/gdrive`を呼び、`GET http://localhost:8000/api/ingest/runs`で該当runの`status`が`running`→`success`に遷移することを確認する
+   9. **削除反映も確認する場合**: 手順4のDriveフォルダから1ファイルを削除（またはゴミ箱へ）した上で再度`make ingest-gdrive`を実行し、該当ソースが`GET /api/sources`から消える（`deleted_at`が立つ）ことを確認する
+
+   上記が全て確認できれば、T8完了条件の手動スモークテスト項目も実質的に満たされたとみなしてよい。
 
 **スコープ外:** なし（最終タスク）。
 
@@ -263,10 +287,10 @@
 
 ## 全体の完了定義（M9 クローズ条件）
 
-- [ ] T0–T8 の全完了条件を満たす
-- [ ] 既存のローカル取り込み（CLI/API/BackgroundTasks）の挙動が一切変更されていない（リグレッションゼロ。全既存テスト通過が根拠）
-- [ ] 依存方向ルール（AGENTS.md §3）を破っていない。特に `worker`/`ingestion` は薄い層のまま、Google Drive API アクセスは `ingestion/` に限定
-- [ ] `make demo` のクリーンルーム体験（NFR-8）に影響がない（`DRIVE_FOLDER_ID` 未設定時、Drive関連コードパスに一切触れない）
-- [ ] `make eval`/`make eval-routing` は対象外（チャンキング・埋め込みモデル・プロンプトを一切変更しないため。スペック §7）
-- [ ] シークレット（サービスアカウント JSON キー）・実データをコミットしていない
-- [ ] `sources.path` の UNIQUE 制約変更がロールバック可能な形で実装されている（T1）
+- [x] T0–T8 の全完了条件を満たす → 達成（T8の手動スモークテストのみユーザー環境依存で持ち越し。上記T8タスクノート参照。それ以外は全完了条件を満たす）
+- [x] 既存のローカル取り込み（CLI/API/BackgroundTasks）の挙動が一切変更されていない（リグレッションゼロ。全既存テスト通過が根拠） → 達成（`make test`で既存の`test_ingestion_indexer.py`/`test_ingest_api.py`/`test_cli.py`等を含む207件全通過。T3実装ノートでも`loader.py::Document`拡張後の既存呼び出しが無変更で動作することを確認済み）
+- [x] 依存方向ルール（AGENTS.md §3）を破っていない。特に `worker`/`ingestion` は薄い層のまま、Google Drive API アクセスは `ingestion/` に限定 → 達成（`worker/tasks.py`は`execute_gdrive_ingestion()`を呼ぶのみ（本タスクでコードレビュー済み）。Drive API呼び出しは`ingestion/gdrive_client.py`に局所化。`cli/main.py`・`worker/tasks.py`はいずれも同一の`ingestion.execute_gdrive_ingestion()`を呼ぶ薄い層で、ロジックの二重実装なし）
+- [x] `make demo` のクリーンルーム体験（NFR-8）に影響がない（`DRIVE_FOLDER_ID` 未設定時、Drive関連コードパスに一切触れない） → 達成（`DRIVE_FOLDER_ID`/`DRIVE_SERVICE_ACCOUNT_FILE`の既定値は空文字列。`make demo`は`seed/corpus`に対するローカル取り込みのみを実行し、Drive関連コードには到達しない設計。T2でのオプトイン設計・README記載の通り）
+- [x] `make eval`/`make eval-routing` は対象外（チャンキング・埋め込みモデル・プロンプトを一切変更しないため。スペック §7） → 達成（M9で変更したのはDrive探索・取り込み経路のみ。`retrieval`/`generation`/`prompts`配下のコードは無変更）
+- [x] シークレット（サービスアカウント JSON キー）・実データをコミットしていない → 達成（`backend/secrets/`は`.gitignore`対象。全コミット履歴を`BEGIN PRIVATE KEY`等でスキャンし該当なしを確認）
+- [x] `sources.path` の UNIQUE 制約変更がロールバック可能な形で実装されている（T1） → 達成（`0004_drive_source_fields.py::downgrade()`が新規3カラム削除・`sources_path_key`復元を実装し、`test_migration_drive_source_fields.py`でロールバック・アトミック失敗ケース双方をテスト済み）
