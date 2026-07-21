@@ -1,7 +1,7 @@
-# M6 タスクリスト (m6_tasklist.md)
+# M6 タスクリスト (docs/specs/26071416-m6_local_llm_provider/tasklist.md)
 
-> 配置先: `docs/specs/m6_tasklist.md`
-> 対応スペック: `docs/specs/m6_local_llm_provider.md`（v0.1、以下「スペック」）
+> 配置先: `docs/specs/26071416-m6_local_llm_provider/tasklist.md`
+> 対応スペック: `docs/specs/26071416-m6_local_llm_provider/spec.md`（v0.1、以下「スペック」）
 > 進め方: 上から順に実施。各タスクに対応スペックの節番号を付記。
 
 ---

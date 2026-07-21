@@ -1,6 +1,6 @@
 # M8 タスクリスト: Clarify Route (rev.1)
 
-- Spec: `m8_clarify_route.md` (v0.1)
+- Spec: `docs/specs/26071715-m8_clarify_route/spec.md` (v0.1)
 - Status: Not started
 - 実行順序: T0 → T1 → T2 →（GO/NO-GO 判定）→ T3 → T4 → T5 → T6
 - 規約: 各タスクは「完了条件をすべて満たす」まで次に進まない。スコープ外の変更を行わない。判断に迷う点はタスク内の「実装ノート」の範囲でのみ裁量を認め、それ以外はスペックに差し戻す
@@ -64,7 +64,7 @@
 1. T1 で改訂した `expected_route`（3値）と、`routing_eval_results.jsonl` に記録済みの `scores` を突き合わせる分析スクリプトを作成する
 2. `expected_route` ごとの rerank score 分布（特に `clarify` と `grounded`/`direct` の境界）を可視化・分析する
 3. THETA（0.56、不変）を下限、分布分析から導いた値を上限として THETA_HIGH の候補値を複数出し、それぞれについて calibration split の3値混同行列を計算する（`scores` からの再計算のみで、ライブの `grade()` 呼び出しは不要）
-4. GO/NO-GO 判定基準を定める（M7 §7.2 相当。例: clarify の再現率・適合率の下限値）。基準はこのタスク内でスコア分布の実データを見た上で具体的な数値として確定し、ADR として起票する（`docs/adr/000N_m8_theta_high_threshold.md`。番号は起票時点の最新採番に従う）
+4. GO/NO-GO 判定基準を定める（M7 §7.2 相当。例: clarify の再現率・適合率の下限値）。基準はこのタスク内でスコア分布の実データを見た上で具体的な数値として確定し、決定の経緯・根拠を本タスクの完了条件注記として本ファイルに直接記録する（独立ADRファイルは作成しない）
 5. 最有力候補の THETA_HIGH について holdout split で最終検証し、GO であれば T3 以降に進む。NO-GO であれば THETA_HIGH の再調整、またはデータセットの見直し（T1 差し戻し）を検討する
 
 **完了条件:**
@@ -152,12 +152,12 @@
 1. `evals/routing.py` の集計ロジックを、記録済み `scores` から THETA/THETA_HIGH で `predicted_route` を再計算する3値混同行列に拡張する（上記実装ノート）
 2. T2 の ADR に基づく合格基準を `make eval-routing` の GO/NO-GO 判定に反映する
 3. 再計算した3値混同行列で holdout split の合否を確認する。`c038` 以外のライブ再実行（Voyage/OpenAI 呼び出し）は不要（既存 `scores` の再利用で完結するため）
-4. `m8_clarify_route.md` の Status を Draft → Accepted に更新し、実装との差分があれば反映する
+4. `docs/specs/26071715-m8_clarify_route/spec.md` の Status を Draft → Accepted に更新し、実装との差分があれば反映する
 5. `docs/decisions.md` に THETA_HIGH の決定を追記する（M7 の記載パターンに合わせる）
 
 **完了条件:**
 - [ ] `make eval-routing` が3値の合否結果を出力する
-- [ ] holdout split での最終合否が記録されている（NO-GO の場合は受理判断を ADR に記録する。M7 の ADR 0005/0006 と同じパターン）
+- [ ] holdout split での最終合否が記録されている（NO-GO の場合は受理判断の経緯・根拠を本タスクリストに直接記録する。M7 T4/T7 の記録パターンを踏襲）
 - [ ] スペックの Status が Accepted に更新されている
 - [ ] `docs/decisions.md` の更新が完了している
 
@@ -169,4 +169,4 @@
 - [ ] `make eval-routing` の3値合否結果が記録されている（PASSED/NO-GO いずれの場合も受理判断が明示されている）
 - [ ] `make lint` / `make test` が通る
 - [ ] グラフが checkpointer なしのステートレス設計のまま維持されている（clarify 経路を含め、新規の永続化機構を追加していない）
-- [ ] `docs/specs/m8_clarify_route.md` の Status が Accepted
+- [ ] `docs/specs/26071715-m8_clarify_route/spec.md` の Status が Accepted

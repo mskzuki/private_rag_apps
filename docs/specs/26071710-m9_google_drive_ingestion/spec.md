@@ -1,7 +1,7 @@
 # M9: Google Drive フォルダ取り込み — 単一フォルダの再帰取り込みと出典連携
 
-- Status: Accepted（T0-T8完了。M9クローズ条件は`m9_tasklist.md`末尾参照。手動スモークテスト（実GCPサービスアカウント + 実Driveフォルダ）のみユーザー環境依存のため持ち越し・再現手順はT8タスクノートに明記）
-- Depends on: M4（増分再取り込みアーキテクチャ・`ingest_runs`、`m4_ingestion_and_demo.md`）、M2（SSE `citations` イベント — 本スペックはペイロード拡張のみ）
+- Status: Accepted（T0-T8完了。M9クローズ条件は`docs/specs/26071710-m9_google_drive_ingestion/tasklist.md`末尾参照。手動スモークテスト（実GCPサービスアカウント + 実Driveフォルダ）のみユーザー環境依存のため持ち越し・再現手順はT8タスクノートに明記）
+- Depends on: M4（増分再取り込みアーキテクチャ・`ingest_runs`、`docs/specs/26070811-m4_ingestion_and_demo/spec.md`）、M2（SSE `citations` イベント — 本スペックはペイロード拡張のみ）
 - Blocked by: なし
 - Blocks: なし
 
@@ -13,10 +13,10 @@
 
 | version | 日付 | 変更 |
 |---|---|---|
-| v0.4 | 2026-07-17 | T8（テスト・ドキュメント最終反映・動作確認）完了に伴い Status を Draft → Accepted に変更。M9 全体（T0-T8）が完了し、`architecture.md`/`db_design.md`/README への実装反映、`decisions.md` の M9 関連3決定の実装照合（齟齬なし）、`make lint`/`make test` の通過を確認済み。実GCPサービスアカウント + 実Driveフォルダでの手動スモークテストのみユーザー環境依存のため持ち越し（再現手順は `m9_tasklist.md` T8タスクノート参照。M7 T3の Voyage/OpenAI レート制限ブロッカーと同様、環境依存の制約として明示的に記録） |
+| v0.4 | 2026-07-17 | T8（テスト・ドキュメント最終反映・動作確認）完了に伴い Status を Draft → Accepted に変更。M9 全体（T0-T8）が完了し、`architecture.md`/`db_design.md`/README への実装反映、`decisions.md` の M9 関連3決定の実装照合（齟齬なし）、`make lint`/`make test` の通過を確認済み。実GCPサービスアカウント + 実Driveフォルダでの手動スモークテストのみユーザー環境依存のため持ち越し（再現手順は `docs/specs/26071710-m9_google_drive_ingestion/tasklist.md` T8タスクノート参照。M7 T3の Voyage/OpenAI レート制限ブロッカーと同様、環境依存の制約として明示的に記録） |
 | v0.3 | 2026-07-17 | T7（エラー処理・観測性）実装反映: (1) §5 に `DRIVE_API_MAX_RETRIES`（既定5）を追加。Drive API の 429/5xx 対策は手製バックオフループではなく `google-api-python-client` 組み込みの `num_retries` に委譲する方針を明記 (2) §6 の ARQ ジョブ trace 名を、当初案の `ingest_run` 統一から実装済みの `ingest_run_gdrive`（T4 由来）へ確定。理由（Langfuse UI上でのトレース名によるローカル/Drive即時判別を優先）を追記し、実装と仕様の食い違いを解消 |
 | v0.2 | 2026-07-17 | レビュー反映: (1) ARQ worker プロセスの起動方法が未規定だった問題を修正。§1/§4.8 に `make worker`（ローカルプロセス起動、`make web` と同じパターン）を追加 (2) 新設パッケージ `worker/` が AGENTS.md §3 の依存方向ルールに反映されていなかった問題を修正。§9 に AGENTS.md §3 への `worker/` 追加を記載（実ファイルは同時に改訂済み） |
-| v0.1 | 2026-07-17 | 初版。ユーザーとの壁打ちで番号衝突（M8 は `m7_adaptive_routing.md` で clarify/HITL/LLM grader 候補として使用済み → 本機能は M9 とする）・スコープ改訂方針・認証方式（サービスアカウント）・ジョブキュー方針（ARQ/Redis を API 経由トリガの堅牢化目的でのみ導入）を確定 |
+| v0.1 | 2026-07-17 | 初版。ユーザーとの壁打ちで番号衝突（M8 は `docs/specs/26071422-m7_adaptive_routing/spec.md` で clarify/HITL/LLM grader 候補として使用済み → 本機能は M9 とする）・スコープ改訂方針・認証方式（サービスアカウント）・ジョブキュー方針（ARQ/Redis を API 経由トリガの堅牢化目的でのみ導入）を確定 |
 
 ---
 
@@ -313,7 +313,7 @@ CREATE UNIQUE INDEX sources_external_id_unique_gdrive
 
 ## 10. タスク分割（概要）
 
-詳細は `docs/specs/m9_tasklist.md` を参照。概要:
+詳細は `docs/specs/26071710-m9_google_drive_ingestion/tasklist.md` を参照。概要:
 
 1. データモデル拡張（マイグレーション・`models/rag.py`）
 2. Drive 認証・クライアント層

@@ -1,6 +1,6 @@
 # M1 — ハイブリッド検索 + リランク（フィーチャースペック）
 
-> 配置先: `docs/specs/m1_hybrid_search.md`
+> 配置先: `docs/specs/26070717-m1_hybrid_search/spec.md`
 > 準拠: requirements.md v0.3 / architecture.md v0.3 / db_design.md v0.2 / AGENTS.md v0.4
 > 前提: **M0（Walking Skeleton）完了済み**（ベクトル検索のみ → 非ストリーム回答 + Langfuse + Recall@5）
 > ステータス: ドラフト v0.1
@@ -213,10 +213,10 @@ trace(chat)
 
 > M5監査（2026-07-13）: 以下は現行コード（`backend/src/private_rag_apps/`）に対して項目ごとに検証した。
 
-- [x] `0002` マイグレーションが適用され pg_bigm GIN 索引が存在する（確認: `backend/alembic/versions/0002_chunks_content_bigm.py` が `chunks_content_bigm` GIN索引を `CREATE INDEX IF NOT EXISTS` で作成）（**要注記**: `0001_init.py`（73-76行）が同名索引を先に作成済みのため、`0002` は実質 no-op になっている。マイグレーション適用後に索引が存在するという結論自体は真だが、「M1がこの索引を追加する」という設計意図どおりには実装されていない。詳細は `m0_tasklist.md` M0-2 の注記を参照）
+- [x] `0002` マイグレーションが適用され pg_bigm GIN 索引が存在する（確認: `backend/alembic/versions/0002_chunks_content_bigm.py` が `chunks_content_bigm` GIN索引を `CREATE INDEX IF NOT EXISTS` で作成）（**要注記**: `0001_init.py`（73-76行）が同名索引を先に作成済みのため、`0002` は実質 no-op になっている。マイグレーション適用後に索引が存在するという結論自体は真だが、「M1がこの索引を追加する」という設計意図どおりには実装されていない。詳細は `docs/specs/26070714-m0_walking_skelton/tasklist.md` M0-2 の注記を参照）
 - [x] `hybrid_rerank` で融合 + リランク後の top_k が生成に渡る（S1）（確認: `retrieval/searcher.py:39-45` の `hybrid_rerank` 分岐が `_hybrid_search`→`_rerank` を実行し、`api/main.py:159,170` で `retrieve_context()` の結果がそのまま `generate_answer_stream()` に渡る）
 - [x] 片側検索が0件でも例外なく回答する（S2）（確認: `retrieval/searcher.py:111-119` の融合SQLは `UNION ALL` で片側空を許容、`searcher.py:138-139` で結果0件なら空リストを返し例外にしない、`_rerank`（166-167行）も空入力で空リストを返す。単体テストは `tests/test_retrieval.py::TestRerankFallback::test_empty_chunks_returns_empty` で確認。ただし実DBで両CTEを通す統合テストは無い — 下記 lint/test 項目の注記参照）
-- [ ] `POST /api/chat` の応答形式が M0 と同一（後方互換, S3） — **未チェック**: `m0_walking_skelton.md` §7 で確認した通り、現行の `/api/chat`（`api/main.py:123`）はM2以降SSEストリーミングに置き換わっており、M0時点のJSON `{content, citations}` 契約とは形式が異なる。M1完了当時（DBマイグレーション・検索・リランク実装時点、SSE化より前のコミット）はこの契約を維持していたと考えられるが、現在のHEADに対しては字句通り未達
+- [ ] `POST /api/chat` の応答形式が M0 と同一（後方互換, S3） — **未チェック**: `docs/specs/26070714-m0_walking_skelton/spec.md` §7 で確認した通り、現行の `/api/chat`（`api/main.py:123`）はM2以降SSEストリーミングに置き換わっており、M0時点のJSON `{content, citations}` 契約とは形式が異なる。M1完了当時（DBマイグレーション・検索・リランク実装時点、SSE化より前のコミット）はこの契約を維持していたと考えられるが、現在のHEADに対しては字句通り未達
 - [x] Langfuse に拡張スパン + rerank コストが出る（S4）（確認: `retrieval/searcher.py:84` `hybrid_search`、`124-136` の `rrf_fuse` 子スパン（`fused_candidates`件数を記録）、`159` `rerank`、`180-189` で rerank のトークン使用量を `update_current_generation` に記録。§4.5「実装上の補足」どおり `vector_search`/`fts_search` は独立スパインではなく `hybrid_search` に統合）
 - [x] `make eval` が fused/reranked 2レッグの比較表（Recall@5/@10・nDCG@10・MRR）を出力・保存する（S5。M3統合ハーネス `backend/src/private_rag_apps/evals/__main__.py` で実現。vector単体レッグは未実装 — 上記「実装上の補足」参照）
 - [ ] PR に before/after の比較表を記載した（AGENTS §9） — **未チェック**: リポジトリ内に検証手段がない（`docs/eval_report.md` は現存せず、`git log` にも該当PRの痕跡なし）。`backend/evals/baselines/current.json` にベースライン数値は存在し `make eval` が最低1回実行された形跡はあるが、PR本文への記載有無はコードからは確認不能。GitHub PR履歴を別途確認する必要がある

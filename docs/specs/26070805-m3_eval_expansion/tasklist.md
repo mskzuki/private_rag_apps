@@ -1,11 +1,11 @@
-# M3 タスクリスト (m3_tasklist.md)
+# M3 タスクリスト (docs/specs/26070805-m3_eval_expansion/tasklist.md)
 
-> 配置先: `docs/specs/m3_tasklist.md`
-> 対応スペック: `docs/specs/m3_eval_expansion.md`（v0.3、以下「スペック」）
+> 配置先: `docs/specs/26070805-m3_eval_expansion/tasklist.md`
+> 対応スペック: `docs/specs/26070805-m3_eval_expansion/spec.md`（v0.3、以下「スペック」）
 > 進め方: 上から順に実施する。各タスクは対応するスペックの節番号を付記。
 > 指標の計算ロジックは**決定的ユニットテストを先に**書く（TDD 寄り）。外部 API を叩く箇所はテストではモック/記録再生（AGENTS.md §8）。
 
-> **M5 監査メモ（2026-07-13）**: 本ファイルのチェックは実装済みコードとの一括照合（bulk verification）で行った。`docs/specs/m3_eval_expansion.md` §11 受け入れ条件の検証結果（file:line 単位の根拠）をこのタスクリストの該当項目に敷衍する形でチェックを付けている。テスト未整備・設定はあるが未配線・`docs/eval_report.md` 未生成などが判明した項目は未チェックのまま `genuine gap` として明記した。
+> **M5 監査メモ（2026-07-13）**: 本ファイルのチェックは実装済みコードとの一括照合（bulk verification）で行った。`docs/specs/26070805-m3_eval_expansion/spec.md` §11 受け入れ条件の検証結果（file:line 単位の根拠）をこのタスクリストの該当項目に敷衍する形でチェックを付けている。テスト未整備・設定はあるが未配線・`docs/eval_report.md` 未生成などが判明した項目は未チェックのまま `genuine gap` として明記した。
 
 > **2026-07-16 追加タスク**: Voyage 無支払い枠（3 RPM）でも日常的な Eval 反復を可能にするため、M3 スペック v0.3 の検索結果キャッシュを実装する。検索品質を変更する作業では `--no-cache` による再取得を必須とする。
 
@@ -17,7 +17,7 @@
 - [x] Langfuse Datasets/Experiments 連携を M3 で実配線するか、フックのみ用意して後続にするか決定（§6.4）— §13「決定事項」で**フックのみ**と決定。`evals/__main__.py:235-237` にコメントアウトの `[HOOK]` として実装済み（Phase 7 は意図的に未実装）
 - [x] graded relevance（`grade`）を付与するか、binary 開始とするか決定（§4.1）— §13「決定事項」で **binary 開始**と決定。データセットの `relevant` は `grade` を省略（既定 1）で統一
 - [x] tolerance は「初回ベースライン取得後（Phase 5）に確定」する運用を確認（ここでは値を決めない）— 運用方針としては踏襲されたが、実際には `EVAL_TOLERANCE_*` 設定を経由せず `evals/__main__.py` に `0.05`/`0.1` がハードコードされている（Phase 5 に注記）
-- [x] 決定事項をスペックに反映（differ があれば先にスペック更新。AGENTS.md §12）— `m3_eval_expansion.md` §13 に「決定事項」ブロックとして反映済み（M2 の §12 未決事項が未反映のままなのとは対照的）
+- [x] 決定事項をスペックに反映（differ があれば先にスペック更新。AGENTS.md §12）— `docs/specs/26070805-m3_eval_expansion/spec.md` §13 に「決定事項」ブロックとして反映済み（M2 の §12 未決事項が未反映のままなのとは対照的）
 
 ---
 
@@ -30,7 +30,7 @@
 - [x] タグ（lookup / synthesis / negative）を付与し、種別の分布を確認 — lookup 24 / synthesis 4 / negative 3（grep で確認）
 - [ ] データセットに `version` を付与し `evals/dataset/` に Git 管理で配置 — 配置場所は正しいが、**`version` フィールド自体はデータセットファイル内に存在しない**（ファイル名 `m3_golden.jsonl` とハーネス側の `provenance["dataset_version"]="m3_golden"`（`__main__.py:138`）のハードコード文字列で代替されているのみ）。厳密には未達
 - [x] スキーマ検証スクリプト（必須フィールド・**path 実在チェック**・grade 範囲）を用意 — `evals/schema.py:24-52` `load_dataset()`（pydantic必須フィールド検証）/`validate_paths()`（path実在）。※ `grade` の値域チェック（範囲外を弾く仕組み）は無い（binary運用のため優先度低）
-- [x] seed 変更時に path 実在チェックを通す運用をドキュメント化（§3.4）— `m3_eval_expansion.md:102` に明記
+- [x] seed 変更時に path 実在チェックを通す運用をドキュメント化（§3.4）— `docs/specs/26070805-m3_eval_expansion/spec.md:102` に明記
 - [x] ユニットテスト: スキーマ検証（不正フィールド・存在しない path を弾く）— `tests/evals/test_schema.py::test_invalid_dataset`, `test_validate_paths`
 
 ---
@@ -88,7 +88,7 @@
 - [ ] メトリクス別 tolerance（`EVAL_TOLERANCE_*`）の初期値を、実測のブレ幅を見て設定 — `core/config.py` に `eval_tolerance_*` 設定は存在せず、`evals/__main__.py:175,181` に `0.05`/`0.1` がハードコードされている。実測のブレ幅から設定した記録も無い
 - [x] baseline 比較ロジック（tolerance 超の低下を回帰として検出）を実装 — `evals/__main__.py:163-188`
 - [x] **検索指標=ハードゲート / 生成指標=ソフト**の判定方針を実装（§7.3）— 同上（reranked指標は `fail=True`→`sys.exit(1)`、生成指標は `warnings` リストに追加するのみで exit しない）
-- [x] baseline 更新は意図的な PR でのみ行う運用をドキュメント化（§6.3）— `m3_eval_expansion.md:196` に明記
+- [x] baseline 更新は意図的な PR でのみ行う運用をドキュメント化（§6.3）— `docs/specs/26070805-m3_eval_expansion/spec.md:196` に明記
 - [ ] ユニットテスト: baseline 比較の tolerance 境界（fail/warn/pass の分岐）— **genuine gap**。該当テストが見つからない
 
 ---
@@ -126,13 +126,13 @@
 
 ## Phase 9 — 仕上げ・受け入れ確認（スペック §11, §13）
 
-- [ ] スペック §11 の受け入れ条件をすべてチェック（データセット/検索指標/生成指標/ハーネス/CI/共通）— 本 M5 監査（2026-07-13）で大半をチェック済みだが、生成 decoding 固定・`EVAL_JUDGE_SAMPLES`平均・CI の pg_bigm 欠如・マルチターン非ゲート・Eval レポート公開など複数項目が未達のまま残っている（`m3_eval_expansion.md` §11 参照）
+- [ ] スペック §11 の受け入れ条件をすべてチェック（データセット/検索指標/生成指標/ハーネス/CI/共通）— 本 M5 監査（2026-07-13）で大半をチェック済みだが、生成 decoding 固定・`EVAL_JUDGE_SAMPLES`平均・CI の pg_bigm 欠如・マルチターン非ゲート・Eval レポート公開など複数項目が未達のまま残っている（`docs/specs/26070805-m3_eval_expansion/spec.md` §11 参照）
 - [x] **M1 前後を含むスコア推移の Eval レポートを公開**（`docs/eval_report.md`。§12 Definition of Success）— **M5追記（2026-07-13）**: 実 `make eval` 実行結果（`backend/evals/reports/latest_summary.md`・`backend/evals/baselines/current.json`）を一次ソースとして `docs/eval_report.md` を作成・公開した。ただし fused/reranked の2段階比較にとどまり、spec §5.2 が理想とする「M0ベクトルのみ」との3段階比較は harness が対応しておらずレポート内で正直に明記している（詳細は同レポート§6）
 - [x] `requirements.md` §9/§NFR-1 を更新（path レベル正解・`EVAL_TOP_K` 分離・ゲート方針）— `requirements.md:143-144`
 - [x] `requirements.md` §12 に Eval レポート公開の具体パスを明記 — `requirements.md:285`（`docs/eval_report.md` と明記。**M5追記**: `docs/eval_report.md` 自体も公開済みのため、`requirements.md` §12 側のチェックはCommit 8で反映する）
 - [x] `architecture.md` に評価フロー・judge の依存・**`retrieval` 診断モード**を追記（§4.2/§13）— `architecture.md:155,267`
 - [x] `AGENTS.md` §7/§9 に CI 実行経路・ゲート方針を反映 — AGENTS.md §7 に「Eval CI は再現経路をたどる（M3 以降）: DB 起動 → make migrate → make ingest（seed）→ make eval → committed baseline と比較。ゲートは検索指標=ハード / 生成指標=ソフト」と明記済み
-- [x] `make lint` / `make test` が通ることを最終確認 — `make lint` は 2026-07-13 時点でクリーン（exit 0）。**M5追記（2026-07-13）**: Docker起動の上で `pytest` をDB込みでフル実行し69件全通過を確認済み。ただしこの通過は `retrieval/searcher.py` の実SQLバグ（`m1_tasklist.md` M5追記参照）を検出できておらず、`make eval` の実行で初めて判明した。テストスイートの実SQL網羅性には既知の穴がある
+- [x] `make lint` / `make test` が通ることを最終確認 — `make lint` は 2026-07-13 時点でクリーン（exit 0）。**M5追記（2026-07-13）**: Docker起動の上で `pytest` をDB込みでフル実行し69件全通過を確認済み。ただしこの通過は `retrieval/searcher.py` の実SQLバグ（`docs/specs/26070717-m1_hybrid_search/tasklist.md` M5追記参照）を検出できておらず、`make eval` の実行で初めて判明した。テストスイートの実SQL網羅性には既知の穴がある
 - [x] 依存方向（LLM は generation・evals のみ）を最終確認 — `retrieval/searcher.py`・`evals/metrics.py`・`evals/schema.py` に LLM 呼び出しなし。LLM呼び出しは `evals/judge.py`（openai）と `generation/generator.py`（openai）に限定
 
 ---
@@ -141,4 +141,4 @@
 
 | version | 日付 | 変更 |
 |---|---|---|
-| v0.1 | 2026-07-07 | 初版。m3_eval_expansion.md v0.2 の §14 実装順序に基づき Phase 0〜9 を作成。指標は決定的ユニットテスト先行、`@k` チャンク基準・doc-dedup・IDCG 基準、`retrieval` 診断モード、生成 decoding 固定、ef_search 全探索寄り、検索ハード/生成ソフトのゲート、再現経路 CI を各 Phase に反映 |
+| v0.1 | 2026-07-07 | 初版。docs/specs/26070805-m3_eval_expansion/spec.md v0.2 の §14 実装順序に基づき Phase 0〜9 を作成。指標は決定的ユニットテスト先行、`@k` チャンク基準・doc-dedup・IDCG 基準、`retrieval` 診断モード、生成 decoding 固定、ef_search 全探索寄り、検索ハード/生成ソフトのゲート、再現経路 CI を各 Phase に反映 |

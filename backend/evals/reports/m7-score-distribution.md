@@ -1,7 +1,7 @@
 # M7 T2: rerank score 分布分析と THETA 初期値決定
 
 - 対応タスク: `.superpowers/sdd/task-T2-brief.md`（M7タスクリスト rev.3 T2）
-- 参照スペック: `docs/specs/m7_adaptive_routing.md`(rev.3) §7.2, §8
+- 参照スペック: `docs/specs/26071422-m7_adaptive_routing/spec.md`(rev.3) §7.2, §8
 - 実行日: 2026-07-15
 - 実行者: T2実装エージェント（worktree `m7-adaptive-routing`）
 - 対象コミット: `10beef93285ffb7ddbea8c559a6ef8a88a991805` 時点の `backend/evals/dataset/routing.jsonl`（T1成果物、130件）

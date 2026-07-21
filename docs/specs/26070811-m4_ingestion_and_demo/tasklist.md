@@ -1,7 +1,7 @@
-# M4 タスクリスト (m4_tasklist.md)
+# M4 タスクリスト (docs/specs/26070811-m4_ingestion_and_demo/tasklist.md)
 
-> 配置先: `docs/specs/m4_tasklist.md`
-> 対応スペック: `docs/specs/m4_ingestion_and_demo.md`（v0.2、以下「スペック」）
+> 配置先: `docs/specs/26070811-m4_ingestion_and_demo/tasklist.md`
+> 対応スペック: `docs/specs/26070811-m4_ingestion_and_demo/spec.md`（v0.2、以下「スペック」）
 > 進め方: 上から順に実施。各タスクに対応スペックの節番号を付記。
 > 各フェーズ末尾で `make lint` / `make test` を通す。取り込みロジックは純粋部分（判定・安全弁・stats）をユニット、DB 反映を統合で検証する（AGENTS.md §8）。
 
@@ -108,7 +108,7 @@
 
 ## Phase 8 — 仕上げ・受け入れ確認（スペック §11, §13）
 
-- [x] スペック §11 の受け入れ条件をすべてチェック（増分/管理API・UI/デモ・再現性/共通）→ `m4_ingestion_and_demo.md` §11 を更新。15分クイックスタートの項目のみ、実Voyageキー不在のため部分実測に留まる（要ユーザー側最終実測）
+- [x] スペック §11 の受け入れ条件をすべてチェック（増分/管理API・UI/デモ・再現性/共通）→ `docs/specs/26070811-m4_ingestion_and_demo/spec.md` §11 を更新。15分クイックスタートの項目のみ、実Voyageキー不在のため部分実測に留まる（要ユーザー側最終実測）
 - [x] 上位ドキュメント反映（§13）:
   - [x] `db_design.md`（running 行 + advisory lock の排他・stale 回収・削除安全弁・復活経路の注記）→ §7に追記、変更履歴 v0.3
   - [x] `architecture.md` §6/§10（埋め込み事前・短トランザクション全置換・削除安全弁・`DELETE /api/index` スコープ）→ 追記、変更履歴 v0.5
@@ -123,9 +123,9 @@
 
 | version | 日付 | 変更 |
 |---|---|---|
-| v0.6 | 2026-07-14 | スペック`m4_ingestion_and_demo.md` v0.4（embed呼び出しペーシング追記）に対応するタスクをPhase 2に追加。ライブ実行でVoyage無支払い枠のRPM上限により発生した取り込み部分失敗を受けた追記 |
+| v0.6 | 2026-07-14 | スペック`docs/specs/26070811-m4_ingestion_and_demo/spec.md` v0.4（embed呼び出しペーシング追記）に対応するタスクをPhase 2に追加。ライブ実行でVoyage無支払い枠のRPM上限により発生した取り込み部分失敗を受けた追記 |
 | v0.5 | 2026-07-11 | Phase 4〜8 実装完了を反映しM4を完了扱いとする（requirements.md反映のみ後日対応）。Phase 4: データ管理UI（`frontend/src/app/sources/page.tsx`、shadcn `table`/`alert-dialog`/`badge`追加）をPlaywrightでブラウザ実動作確認。Phase 5: `make demo`のCORPUS_DIR固定化、seed↔M3データセットの整合確認（差分なし）。副次的に`backend/seed`が未追跡の空ディレクトリでローカル実行時にコーパスパスが解決できないバグを発見し、`../seed`へのシンボリックリンクに修正。Phase 6: Langfuseトレース配線をコードレベルで確認（実クレデンシャル無しのためダッシュボード目視は未実施）。Phase 7: `make setup`がAGENTS.md記載の内容(uv sync+pnpm install+.env生成+DB起動)を実装していなかったバグを修正。pg_bigmビルド+DB起動+migrateの部分実測(合計1分未満)、`.env.example`最終化、READMEクイックスタート更新（実VOYAGE_API_KEY不在のためフル実測は未了、ユーザー側での最終実測を推奨）。Phase 8: db_design.md/architecture.md/AGENTS.mdへ反映。requirements.mdは別件の未コミット編集と競合するため見送り |
 | v0.4 | 2026-07-11 | Phase 3 実装完了を反映。`indexer.py`の`run_ingestion`を`start_run`+`execute_ingestion`に分割し、APIハンドラで`start_run`を同期実行してrun idを即返しつつ実処理をBackgroundTasks（独立Session）へ委譲する構成にした。`GET /api/sources`・`POST /api/ingest`・`GET /api/ingest/runs`・`DELETE /api/index`を実装、threadingを使った実タイミングの多重起動拒否テストを含め`tests/test_ingest_api.py`を追加。Phase 4以降は未着手 |
 | v0.3 | 2026-07-11 | Phase 0〜2 実装完了を反映。Phase 0 は既定値維持で確認済み（スペック差分なし）。Phase 1 はDockerfile.local/docker-compose.ymlが既に整備済みのため検証のみ実施（pg_bigm拡張・head migration・bigmインデックスを確認）。Phase 2 は `ingestion/diff.py`（classify/should_apply_deletions）・`ingestion/concurrency.py`（start_run/reap_stale_running）を新規追加し、`indexer.py`を増分ロジック対応に書き換え。`core/config.py`にINGEST_*設定を追加、CLIに`--trigger`/`--force-delete`、Makefileの`demo`ターゲットにtrigger='demo'を配線。Phase 3以降は未着手 |
 | v0.2 | 2026-07-08 | セルフレビュー反映: (1) Phase 1 に **`make migrate` クリーン成功ゲート**を追加。(2) Phase 2 に **CLI エントリポイント**（`make ingest`/`make demo`/`FORCE_DELETE`・trigger 出し分け）と **embed トレース同時配線**を追加。(3) running 排他の**実タイミング検証を Phase 3（BackgroundTasks 経路）に委譲**、Phase 2 はヘルパ提供まで。(4) Phase 5 の seed↔M3 を「差分洗い出し→**M3 データセット更新**→検証」に分解。(5) minor: `GET /api/sources` の `include_deleted` パラメータ、Phase 6 をトレース横断確認に縮小、Phase 7 に 15 分超過時の分岐と `.env.example` 最終化 |
-| v0.1 | 2026-07-08 | 初版。m4_ingestion_and_demo.md v0.2 §14 の実装順序に基づき Phase 0〜8 を作成。pg_bigm イメージを Phase 1 に前倒し（M3 CI と兼用）。増分は復活経路・埋め込み事前/短トランザクション全置換・削除安全弁+FORCE_DELETE・running 排他+stale 回収・stats 逐次更新を反映。seed↔M3 の path 整合チェックを Phase 5 の完了条件に |
+| v0.1 | 2026-07-08 | 初版。docs/specs/26070811-m4_ingestion_and_demo/spec.md v0.2 §14 の実装順序に基づき Phase 0〜8 を作成。pg_bigm イメージを Phase 1 に前倒し（M3 CI と兼用）。増分は復活経路・埋め込み事前/短トランザクション全置換・削除安全弁+FORCE_DELETE・running 排他+stale 回収・stats 逐次更新を反映。seed↔M3 の path 整合チェックを Phase 5 の完了条件に |

@@ -37,7 +37,7 @@
 
 ### Google Drive からの取り込み（任意・M9）
 
-ローカルコーパスに加えて、単一の固定 Google Drive フォルダをそのまま取り込み対象にできます（複数フォルダ・複数アカウントの管理 UI は無く、OAuth も使いません。認証はサービスアカウントのみです）。詳細仕様は [docs/specs/m9_google_drive_ingestion.md](docs/specs/m9_google_drive_ingestion.md) を参照してください。
+ローカルコーパスに加えて、単一の固定 Google Drive フォルダをそのまま取り込み対象にできます（複数フォルダ・複数アカウントの管理 UI は無く、OAuth も使いません。認証はサービスアカウントのみです）。詳細仕様は [docs/specs/26071710-m9_google_drive_ingestion/spec.md](docs/specs/26071710-m9_google_drive_ingestion/spec.md) を参照してください。
 
 設定が空のままでも既存のローカル取り込み（`make ingest`/`make demo`）には一切影響しません（完全にオプトイン）。以下は (A) 設定手順（一度きり）→ (B) 取り込みコマンド → (C) 動作確認の順に説明します。
 
@@ -73,7 +73,7 @@ make ingest-gdrive
 
 **API 経由（非同期・プロセス再起動に耐える再試行つき）**
 
-こちらは Drive 取り込みに限り ARQ/Redis を使う経路です（`docs/specs/m9_google_drive_ingestion.md` §3.3 参照。ローカル取り込みの API 経由トリガは引き続き `BackgroundTasks` のままで変更ありません）。
+こちらは Drive 取り込みに限り ARQ/Redis を使う経路です（`docs/specs/26071710-m9_google_drive_ingestion/spec.md` §3.3 参照。ローカル取り込みの API 経由トリガは引き続き `BackgroundTasks` のままで変更ありません）。
 
 1. `docker compose up`（`db`/`api` に加えて `redis` サービスも起動します）
 2. 別ターミナルで `make worker`（ARQ worker をホスト上で直接起動。`make web` と同じくコンテナ化しません）

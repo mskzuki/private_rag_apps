@@ -1,6 +1,6 @@
-# Private RAG Apps — M3 フィーチャースペック: Eval 拡充（データセット・生成指標・CI 連携） (m3_eval_expansion.md)
+# Private RAG Apps — M3 フィーチャースペック: Eval 拡充（データセット・生成指標・CI 連携） (docs/specs/26070805-m3_eval_expansion/spec.md)
 
-> 配置先: `docs/specs/m3_eval_expansion.md`
+> 配置先: `docs/specs/26070805-m3_eval_expansion/spec.md`
 > 対象マイルストーン: **M3**（requirements.md §10）
 > 充足要件: **NFR-1（完全）** / **§9 評価計画（拡充）**、関連 **NFR-3 / NFR-5 / NFR-6 / NFR-7 / NFR-8 / §12 Definition of Success**
 > 上位ドキュメント: 要件=`requirements.md`、構成=`architecture.md`、物理設計=`db_design.md`、作業規約=`AGENTS.md`。
@@ -306,7 +306,7 @@ CI ジョブは本番と同じクリーン経路をたどる:
 - [x] `make eval` は検索結果キャッシュを既定で再生し、`--no-cache` のみ Voyage を呼んで成功時にキャッシュを更新する。キャッシュの provenance 不一致は明示エラーとする（§6.1）— `evals/retrieval_cache.py` と `evals/__main__.py`。`tests/evals/test_retrieval_cache.py` で API 非呼出の再生と provenance 不一致を検証
 - [x] レポートに provenance（各モデル名・検索パラメータ・corpus ハッシュ・dataset version）が記録される — `__main__.py:136-155`（embed/rerank フィールドを含め本 M5 セッションで追加済み。ただし `embed_dims`/`rerank` はハードコード値であり `settings` からの動的取得ではない旨がコード中コメントに明記）
 - [x] committed baseline との比較で回帰を検出できる — `evals/baselines/current.json` が存在し、`__main__.py:163-188` で比較ロジックが実装されている。※ 現状の `current.json` の数値は丸い値（0.9/0.95等）で実 `make eval` 実行由来か未確認（実行は Docker 起動待ち）
-- [x] M1 前後を含むスコア推移の **Eval レポートが公開**されている（§12）— **M5追記（2026-07-13）**: 実 `make eval` 実行結果を一次ソースに `docs/eval_report.md` を作成・公開した（詳細は `m3_tasklist.md` の同項目参照）
+- [x] M1 前後を含むスコア推移の **Eval レポートが公開**されている（§12）— **M5追記（2026-07-13）**: 実 `make eval` 実行結果を一次ソースに `docs/eval_report.md` を作成・公開した（詳細は `docs/specs/26070805-m3_eval_expansion/tasklist.md` の同項目参照）
 
 **CI（§9 / AGENTS.md §7・§9・§11）**
 - [x] 対象パス（prompts/retrieval/ingestion/generation/evals）変更 PR で Eval が自動実行される — `.github/workflows/eval.yml:3-12` の `on.pull_request.paths` がスペック §7.1 の全パス（+`core/config.py`）と一致
@@ -349,7 +349,7 @@ CI ジョブは本番と同じクリーン経路をたどる:
 
 ## 14. 実装順序の目安 → 次アクション
 
-AGENTS.md §12 に従い、**本スペック → `docs/specs/m3_tasklist.md` → 実装**の順で進める。概略の依存順:
+AGENTS.md §12 に従い、**本スペック → `docs/specs/26070805-m3_eval_expansion/tasklist.md` → 実装**の順で進める。概略の依存順:
 
 1. データセット拡充（30〜50 問、path レベル正解、negative 含む、version 付与）
 2. 検索指標の実装（Recall@5/10・nDCG@10・MRR、**chunk 基準・doc-dedup**、**`retrieval` 診断 API で融合前/後の両リスト取得**）
@@ -361,7 +361,7 @@ AGENTS.md §12 に従い、**本スペック → `docs/specs/m3_tasklist.md` →
 8. マルチターン小規模サブセット（sanity・非ゲート）
 9. 仕上げ: Eval レポート公開、§13 の上位ドキュメント反映、受け入れ条件の充足確認
 
-> 次に作成すべき成果物は **`docs/specs/m3_tasklist.md`**（チェックボックスでの進捗管理。AGENTS.md §12）。
+> 次に作成すべき成果物は **`docs/specs/26070805-m3_eval_expansion/tasklist.md`**（チェックボックスでの進捗管理。AGENTS.md §12）。
 
 ---
 

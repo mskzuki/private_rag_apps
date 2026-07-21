@@ -1,11 +1,11 @@
-# M2 タスクリスト (m2_tasklist.md)
+# M2 タスクリスト (docs/specs/26070718-m2_streaming_and_history/tasklist.md)
 
-> 配置先: `docs/specs/m2_tasklist.md`
-> 対応スペック: `docs/specs/m2_streaming_and_history.md`（以下「スペック」）
+> 配置先: `docs/specs/26070718-m2_streaming_and_history/tasklist.md`
+> 対応スペック: `docs/specs/26070718-m2_streaming_and_history/spec.md`（以下「スペック」）
 > 進め方: 上から順に実施する。各タスクは対応するスペックの節番号を付記。
 > 各フェーズの末尾で `make lint` / `make test` を通し、RAG 挙動（condense プロンプト追加）に触れたら `make eval` を実行する（AGENTS.md §7/§10）。
 
-> **M5 監査メモ（2026-07-13）**: 本ファイルのチェックは実装済みコードとの一括照合（bulk verification）で行った。個々のコマンドを再実行するのではなく、`docs/specs/m2_streaming_and_history.md` §10 受け入れ条件の検証結果（file:line 単位の根拠）をこのタスクリストの該当項目に敷衍する形でチェックを付けている。テスト未整備・実装未配線が判明した項目は未チェックのまま `genuine gap` として明記した。
+> **M5 監査メモ（2026-07-13）**: 本ファイルのチェックは実装済みコードとの一括照合（bulk verification）で行った。個々のコマンドを再実行するのではなく、`docs/specs/26070718-m2_streaming_and_history/spec.md` §10 受け入れ条件の検証結果（file:line 単位の根拠）をこのタスクリストの該当項目に敷衍する形でチェックを付けている。テスト未整備・実装未配線が判明した項目は未チェックのまま `genuine gap` として明記した。
 
 ---
 
@@ -118,14 +118,14 @@
 - [x] Phase 1/3 で配線した `condense` / `generate(stream)` span が 1 チャット = 1 トレースに正しく収まることを確認（span 構成: condense→embed_query→retrieve→rerank→generate）— `api/main.py:122` `@observe()` on `chat()` がルートトレース、`retrieval/searcher.py` の `@observe(name="retrieve_context")` が embed_query/vector_search/hybrid_search/rerank をサブスパン化、`condense`/`generate_answer_stream` が generation span として同一トレース内に収まる（Langfuse のコンテキスト伝播）
 - [x] `ttft_ms` をトレース属性として記録する実装 — `api/main.py:180-184`
 - [ ] クライアント切断時にトレースを `cancelled` として閉じる実装 — コード内に `cancelled` の文字列・実装は見つからず。**genuine gap**（スペック §6/§4.6 が明記する挙動が未実装）
-- [ ] TTFT・検索レイテンシの p95 を**初回/フォローアップ別に**実測し、暫定目標値をドキュメント化（スペック §7、§12 の `requirements.md` 反映と合わせる）— 実測値・ベースライン文書は存在しない（`requirements.md`/`m2_streaming_and_history.md` §7 とも将来形の記述のみ）。Langfuse を有効化した実行が必要で M5 Phase 3 待ち
+- [ ] TTFT・検索レイテンシの p95 を**初回/フォローアップ別に**実測し、暫定目標値をドキュメント化（スペック §7、§12 の `requirements.md` 反映と合わせる）— 実測値・ベースライン文書は存在しない（`requirements.md`/`docs/specs/26070718-m2_streaming_and_history/spec.md` §7 とも将来形の記述のみ）。Langfuse を有効化した実行が必要で M5 Phase 3 待ち
 - [ ] （任意）範囲外 `[n]` が出た事象をトレース/ログに記録し、プロンプト品質を観測できるようにする（§4.5）— 任意項目。サーバー側のログ/トレース記録は見つからず（フロント側の表示フィルタのみ）。未実装のまま
 
 ---
 
 ## Phase 8 — 仕上げ・受け入れ確認（スペック §10, §12）
 
-- [ ] スペック §10 の受け入れ条件をすべてチェック（ストリーミング/出典UI/マルチターン/会話履歴/assistant-ui/可観測性/共通の各項目）— 本 M5 監査（2026-07-13）で大半をチェック済みだが、`ttft_ms`/検索レイテンシの p95 ベースライン文書化・`make test` の DB 込みフル実行確認の 2 項目が未達のまま残っている（`m2_streaming_and_history.md` §10 参照）
+- [ ] スペック §10 の受け入れ条件をすべてチェック（ストリーミング/出典UI/マルチターン/会話履歴/assistant-ui/可観測性/共通の各項目）— 本 M5 監査（2026-07-13）で大半をチェック済みだが、`ttft_ms`/検索レイテンシの p95 ベースライン文書化・`make test` の DB 込みフル実行確認の 2 項目が未達のまま残っている（`docs/specs/26070718-m2_streaming_and_history/spec.md` §10 参照）
 - [x] 生成中リロードで進行中の回答が失われる（resumeRun 非対応）ことを**非目標として許容**する旨を確認（§2.2）— スペック §2.2 の Out of scope 表に明記済み
 - [x] `architecture.md` §7 を更新: `citations` 送出順（token 前）、`done` payload への `conversation_id` 追加 — `architecture.md:237-239`、v0.4 changelog（L312）
 - [x] `architecture.md` §7 API 表に `POST /api/conversations` を追加 — `architecture.md:225`
@@ -142,4 +142,4 @@
 | version | 日付 | 変更 |
 |---|---|---|
 | v0.2 | 2026-07-07 | スペック v0.2 追従: Phase 2 を **done 一括保存**へ変更（user 先行保存タスクを削除、失敗ターン非保存の統合テストを追加）。generate span を Phase 1・condense span を Phase 3 へ移し、Phase 7 は横断計測に限定（span 後付けの回避）。Phase 5 に **範囲外 `[n]` 無視**の実装・テストを追加。Phase 1 の `done`→Phase 2 依存を注記。Phase 8 に resumeRun 非目標の確認を追加 |
-| v0.1 | 2026-07-07 | 初版。m2_streaming_and_history.md §13 の実装順序に基づき Phase 0〜8 のチェックリストを作成 |
+| v0.1 | 2026-07-07 | 初版。docs/specs/26070718-m2_streaming_and_history/spec.md §13 の実装順序に基づき Phase 0〜8 のチェックリストを作成 |

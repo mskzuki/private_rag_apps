@@ -1,6 +1,6 @@
 # routing.jsonl — M7 Adaptive Routing eval データセット
 
-M7 タスク T1 の成果物。`docs/specs/m7_adaptive_routing.md`(rev.3)§7.1/§7.2 と
+M7 タスク T1 の成果物。`docs/specs/26071422-m7_adaptive_routing/spec.md`(rev.3)§7.1/§7.2 と
 `.superpowers/sdd/task-T1-brief.md` に基づいて作成した、閾値(THETA)キャリブレーション
 と grade 精度検証のためのデータセット。T2 以降(閾値キャリブレーション・実装)が
 このファイルを使用する。

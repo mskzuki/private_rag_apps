@@ -271,9 +271,4 @@ LIMIT :fuse_k;
 
 ## 変更履歴
 
-| version | 日付 | 変更 |
-|---|---|---|
-| v0.4 | 2026-07-17 | M9（Google Drive フォルダ取り込み）実装反映（T8。マイグレーション `0004_drive_source_fields.py` 準拠）: §3 ER 図の `sources` に `source_type`/`external_id`/`source_url` を追加。§4 の `sources`/`ingest_runs` DDL を実装済みスキーマに同期（`source_type` CHECK 制約・`external_id`/`source_url`・旧 `UNIQUE(path)` 廃止）。§5 に `sources_path_unique_local`/`sources_external_id_unique_gdrive`（`sources_path_key` の置き換え）を追加。§7 に Drive のソース識別キー・`modifiedTime` 事前フィルタの行を追加 |
-| v0.3 | 2026-07-11 | M4 追従: §7 に増分再取り込みの実装詳細を追記。埋め込み事前+短トランザクション全置換、多重実行抑止（`running` 行の存在 + 開始の原子性のための advisory lock。DDL 非追加）とstale running 回収、削除安全弁（`INGEST_DELETE_GUARD_RATIO`・`FORCE_DELETE`）、soft-delete 済み path の復活経路を明記 |
-| v0.2 | 2026-07-07 | requirements v0.2 追従: `connections`（OAuth トークン暗号化含む）・`sync_runs` を廃止。`documents` → `sources` に改名（path 一意・mtime 保持）、`ingest_runs` を独立ログとして新設（trigger 列追加）。ER 図・インデックス・ハイブリッド検索 SQL を sources 前提に更新。トークン暗号化セクションを削除 |
-| v0.1 | 2026-07-04 | 初版（壁打ちドラフト） |
+変更の経緯・判断根拠は `docs/decisions.md`、詳細な変更点は `git log -- docs/db_design.md` を参照。現行 v0.4（2026-07-17）。

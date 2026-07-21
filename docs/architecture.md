@@ -53,11 +53,11 @@ flowchart LR
 - **worker**（M9 新設）: ARQ ワーカープロセス。`POST /api/ingest/gdrive` が enqueue したジョブのみを処理する薄い層（`ingestion.execute_gdrive_ingestion()` を呼ぶのみ。AGENTS.md §3）。`make worker` でホスト上に直接起動する（`make web` と同じパターン。専用 docker イメージは持たない）
 - **pg**: リレーショナル + ベクトル + 全文を単一 DB で
 - **redis**（M9 新設）: `docker-compose.yml` の `redis` サービス。**Drive 取り込みの API 経由トリガの堅牢化（FastAPI プロセス再起動をまたいだ再試行）にのみ**使う。ローカル取り込み（CLI/API/BackgroundTasks）には一切関与しない
-- Redis / ジョブキューは、ローカル取り込みの範囲では持たない（v0.2 で SaaS 同期がスコープ外になったため）。**M9 で Google Drive 取り込みの API 経由トリガに限定した例外として ARQ/Redis を導入した**（AGENTS.md §2、`docs/specs/m9_google_drive_ingestion.md` §3.3）。将来 SaaS コネクタを本格導入する際は改めて再検討する
+- Redis / ジョブキューは、ローカル取り込みの範囲では持たない（v0.2 で SaaS 同期がスコープ外になったため）。**M9 で Google Drive 取り込みの API 経由トリガに限定した例外として ARQ/Redis を導入した**（AGENTS.md §2、`docs/specs/26071710-m9_google_drive_ingestion/spec.md` §3.3）。将来 SaaS コネクタを本格導入する際は改めて再検討する
 
 ### Google Drive からの取り込み（M9）
 
-単一の固定 Drive フォルダをサービスアカウント認証で取り込む、限定スコープの機能（詳細: `docs/specs/m9_google_drive_ingestion.md`）。`DRIVE_FOLDER_ID`/`DRIVE_SERVICE_ACCOUNT_FILE` が空の場合は完全に無効（`make demo` のクリーンルーム体験・既存のローカル取り込みには一切影響しない）。
+単一の固定 Drive フォルダをサービスアカウント認証で取り込む、限定スコープの機能（詳細: `docs/specs/26071710-m9_google_drive_ingestion/spec.md`）。`DRIVE_FOLDER_ID`/`DRIVE_SERVICE_ACCOUNT_FILE` が空の場合は完全に無効（`make demo` のクリーンルーム体験・既存のローカル取り込みには一切影響しない）。
 
 - 認証: サービスアカウント（OAuth は使わない）。対象フォルダをサービスアカウントのメールアドレスに共有するだけで動作する
 - トリガは 2 経路: CLI（`make ingest-gdrive`、同期実行）と API（`POST /api/ingest/gdrive`、ARQ 経由）。両者は共通の入口 `ingestion.execute_gdrive_ingestion()` を呼ぶ（ロジックの二重実装を避ける）
@@ -174,7 +174,7 @@ sequenceDiagram
 - ベクトル/全文どちらか 0 件でも動作する（片側だけで融合）
 - 検索結果 0 件のときは生成をスキップし「見つからない」を返す（NFR-6）
 
-- **評価/診断モード（M3）**: `evals/` 向けに、RRF 融合直後のランキングとリランク後のランキングの**両方**を返すインターフェースを持つ（リランク寄与の計測用。evals 側で検索ロジックを再実装しない。`docs/specs/m3_eval_expansion.md` §4.2）
+- **評価/診断モード（M3）**: `evals/` 向けに、RRF 融合直後のランキングとリランク後のランキングの**両方**を返すインターフェースを持つ（リランク寄与の計測用。evals 側で検索ロジックを再実装しない。`docs/specs/26070805-m3_eval_expansion/spec.md` §4.2）
 
 > pg_bigm を PGroonga に差し替える場合、影響範囲は `retrieval` の全文検索クエリと DB 拡張のみ（`db_design.md` §2）。
 
@@ -239,7 +239,7 @@ sequenceDiagram
 
 ### Google Drive 取り込み（M9）
 
-単一の固定 Drive フォルダ（`DRIVE_FOLDER_ID`）をサービスアカウント認証で再帰的に取り込む。ローカル取り込みとの共通化・差分は以下の通り（詳細: `docs/specs/m9_google_drive_ingestion.md` §4.4/§4.5）。
+単一の固定 Drive フォルダ（`DRIVE_FOLDER_ID`）をサービスアカウント認証で再帰的に取り込む。ローカル取り込みとの共通化・差分は以下の通り（詳細: `docs/specs/26071710-m9_google_drive_ingestion/spec.md` §4.4/§4.5）。
 
 - **薄いクライアント / ローダーの分離**: `ingestion/gdrive_client.py` は Drive API（`files.list`/`files.get`/`files.export`）の薄いラッパーのみを持ち、探索・変更検知ロジックを持たない。`ingestion/gdrive_loader.py` がフォルダの再帰探索・mimeType 判定（対応形式外は拡張子による救済判定を経てスキップ）・変更検知を行い、`loader.py::Document` に `source_type`/`external_id`/`source_url` を加えた内部表現を生成する
 - **2 段構えの変更検知**: まず Drive の `modifiedTime` を `sources.source_updated_at` と比較し、無変化ならダウンロードそのものを省略する（Drive API 呼び出しのコスト削減。ローカル FS 読み込みには無いコスト構造のための Drive 固有の最適化）。変化がある場合のみ本文を取得して SHA256 で `content_hash` を計算し、既存の `ingestion/diff.py::classify()` にそのまま渡して最終判定する（**新規の変更検知ロジックを `classify()` の外に持ち込まない**）
@@ -286,7 +286,7 @@ sequenceDiagram
 | `error` | エラー状態を表示（リトライ導線） |
 
 - 出典カードのクリックで元ソース情報（title / path / heading）を表示（FR-5）。
-- **実装注意（累積 yield）**: assistant-ui の `ChatModelAdapter.run` は各ステップで**完全な content を yield する契約**のため、出典パートは**累積 content に一度だけ追加して保持し続ける**（チャンクごとに content を作り直すと出典が消える。`docs/specs/m2_streaming_and_history.md` §5.2）。
+- **実装注意（累積 yield）**: assistant-ui の `ChatModelAdapter.run` は各ステップで**完全な content を yield する契約**のため、出典パートは**累積 content に一度だけ追加して保持し続ける**（チャンクごとに content を作り直すと出典が消える。`docs/specs/26070718-m2_streaming_and_history/spec.md` §5.2）。
 - 最終表示は本文に出現した `[n]` のカードのみ。citations に対応の無い**範囲外 `[n]` はリンク化・カード化しない**（同 §4.5/§5.3）。
 - auto-scroll・retry・streaming 状態など手作りで壊れやすい部分は assistant-ui の実装に委ね、自前実装しない（NFR-7 保守性）。
 
@@ -350,13 +350,4 @@ sequenceDiagram
 
 ## 変更履歴
 
-| version | 日付 | 変更 |
-|---|---|---|
-| v0.8 | 2026-07-17 | M9（Google Drive フォルダ取り込み）実装反映（T8。スペック §9 の通り実装完了時点で反映）: §1 構成図・プロセス数の説明に `worker`（ARQ）/`redis`/`gdrive` を追加し、Google Drive 取り込みの概要小節を新設。§2 モジュール表に `worker` を追加し、Google Drive API アクセスの局所化ルールを追記。§6 に Drive 取り込み（クライアント/ローダー分離・2段変更検知・indexer統合・削除安全弁のソース種別分離）の小節を追加。§7 API 表に `POST /api/ingest/gdrive` を追加、`GET /api/sources`/`GET /api/ingest/runs` の説明を実装に合わせて更新。§8 に `gdrive_scan` span・`ingest_run_gdrive` trace 名を追記。§9 に M9 の5設定キーを追記。§10 にスペック §4.9 で規定されていた Drive 固有のエラー処理行を追加（T7時点で未反映だった差分の解消）。§11 にジョブキュー例外・identity key 一般化の判断を追記 |
-| v0.7 | 2026-07-14 | §9 の DB 環境分離を実装反映: `rag_dev`/`rag_test` を実際に作成し、`docker-compose.yml`（`POSTGRES_DB`・initdb スクリプト・`api` の `DATABASE_URL`）、`core/config.py` 既定値、`.env.example`、`make test`（`DATABASE_URL` を `rag_test` に固定）を更新 |
-| v0.6 | 2026-07-14 | §9 に DB 環境分離の方針（開発用 `rag_dev` / テスト用 `rag_test`）を追記。背景は `make test` がデモ用DBを誤って初期化した事故（M5・M6で計2回）。方針決定のみで実装は未着手 |
-| v0.5 | 2026-07-11 | M4 追従: §1 に pg_bigm 入り Postgres イメージの注記と、`POST /api/ingest` が running 行を同期作成してから id を返す設計を追記。§6 に増分再取り込み（content_hash 判定・埋め込み事前+短トランザクション全置換・削除安全弁・soft-delete 復活経路）を追記。§9 に `INGEST_*` 設定キーを追記。§10 に削除安全弁・多重起動・`DELETE /api/index`（会話は保持）のエラー処理行を追加 |
-| v0.4 | 2026-07-08 | M2/M3 スペック追従 + 全体レビュー反映: §3.2/§7 の SSE を M2 確定版へ（**citations を生成前送出**・`done` に `conversation_id`・エラーターン非保存）。§7 API 表に `POST /api/conversations` 追加、assistant-ui に**累積 yield の注意**と**範囲外 `[n]` 無視**を追記。§4 に `retrieval` の**評価/診断モード**（融合前/後の両ランキング）を追加。§8 に Eval/judge のトレースを追記。`LANGFUSE_*` を任意化（§8/§9）。`web/` → `frontend/`（AGENTS v0.5 追従）。ヘッダの requirements 参照を v0.4 へ |
-| v0.3 | 2026-07-07 | チャット UI に **assistant-ui**（カスタムランタイム）を採用。§7 に SSE→ランタイムのマッピングと出典カードの generative UI 描画を追記。§1 構成図・§11 設計判断を更新。ChatKit 不採用の理由を明記 |
-| v0.2 | 2026-07-07 | requirements v0.2 追従: SaaS コネクタ・OAuth・connectors モジュール・worker/ARQ/Redis を削除。取り込みを CLI + BackgroundTasks に変更、`cli` モジュール追加。API から OAuth/connections 系を削除し sources/ingest 系に置換。全文検索を pg_bigm と明記。sync_runs → ingest_runs。Qdrant 比較を経た pgvector 採用理由を §11 に追記 |
-| v0.1 | 2026-07-04 | 初版（壁打ちドラフト） |
+変更の経緯・判断根拠は `docs/decisions.md`、詳細な変更点は `git log -- docs/architecture.md` を参照。現行 v0.8（2026-07-17）。

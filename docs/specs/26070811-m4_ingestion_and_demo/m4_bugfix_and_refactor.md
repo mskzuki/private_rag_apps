@@ -4,7 +4,7 @@
 >
 > | 指摘 | 状態 | 備考 |
 > |---|---|---|
-> | A-1（安全弁作動時に `run.status` を全体errorにする） | ✅ 解決済み | `254834b`。`_apply_deletion_phase` が `status="success"` を維持し理由を `error` に記録。決定は `m4_ingestion_and_demo.md` §13 に明記 |
+> | A-1（安全弁作動時に `run.status` を全体errorにする） | ✅ 解決済み | `254834b`。`_apply_deletion_phase` が `status="success"` を維持し理由を `error` に記録。決定は `docs/specs/26070811-m4_ingestion_and_demo/spec.md` §13 に明記 |
 > | A-2（`reset_index` がadvisory lockを取らない） | ✅ 解決済み | `254834b`。`acquire_start_lock`/`get_running_run`/`reap_stale_running` を共有ヘルパ化し `start_run`・`reset_index` 双方から使用 |
 > | A-3（CLIが `os.environ` を直読みしchoicesを回避） | ✅ 解決済み | `254834b`。`core.config.Settings` に `ingest_trigger: Literal["cli","demo"]` / `force_delete: bool` を追加 |
 > | B-4（戻り値型注釈の欠如） | ✅ 解決済み | `254834b`。5関数すべてに戻り値型（専用TypedDictを含む）を付与 |
@@ -17,7 +17,7 @@
 > | D-11（`test_ingest_api.py` の `finally`/`NameError` リスク） | ✅ 解決済み | `254834b`。`body` を `try` の前に取得し `finally` は `.get()` を使用 |
 > | D-12（advisory lockの実並行性テスト欠如） | ✅ 解決済み | 本追記と同時期のコミットで `test_start_run_advisory_lock_serializes_concurrent_starts` を追加 |
 > | D-13（`_cleanup` の無条件全削除） | ✅ 解決済み | 本追記と同時期のコミットで `run_ids` による範囲指定に変更 |
-> | E（`m4_tasklist.md` Phase8/changelog不整合） | ✅ 解決済み | `m4_tasklist.md` v0.5 changelogで解消（Phase 8は5/7チェック済み、残り2件は理由付きで意図的に対象外） |
+> | E（`docs/specs/26070811-m4_ingestion_and_demo/tasklist.md` Phase8/changelog不整合） | ✅ 解決済み | `docs/specs/26070811-m4_ingestion_and_demo/tasklist.md` v0.5 changelogで解消（Phase 8は5/7チェック済み、残り2件は理由付きで意図的に対象外） |
 
 ## Context（背景）
 
@@ -26,7 +26,7 @@
 - 変更: `ingestion/indexer.py`, `api/main.py`, `cli/main.py`, `core/config.py`
 - 新規: `ingestion/concurrency.py`, `ingestion/diff.py`, `backend/seed`（`../seed` へのsymlink）, テスト4本
 
-このレビューはこの未コミット差分を対象にした（バックエンド全体の悉皆レビューではない）。`docs/specs/m4_ingestion_and_demo.md`（v0.2）・`m4_tasklist.md` と突き合わせ、AGENTS.md の規約（依存方向・型注釈・設定の一元化・async等）に照らして検証済み。以下は実際にファイルを読んで確認した指摘のみ（未検証の推測は含めていない）。★は特に重要。
+このレビューはこの未コミット差分を対象にした（バックエンド全体の悉皆レビューではない）。`docs/specs/26070811-m4_ingestion_and_demo/spec.md`（v0.2）・`docs/specs/26070811-m4_ingestion_and_demo/tasklist.md` と突き合わせ、AGENTS.md の規約（依存方向・型注釈・設定の一元化・async等）に照らして検証済み。以下は実際にファイルを読んで確認した指摘のみ（未検証の推測は含めていない）。★は特に重要。
 
 ---
 
@@ -43,10 +43,10 @@ else:
     run.status = "error"
     run.error = f"delete phase aborted: {reason}"
 ```
-- **仕様**: `m4_ingestion_and_demo.md` §4.3/§14 は「安全弁発動時に実行全体をerrorにするか、削除フェーズのみ中断して追加/更新は残すか」を未決事項として明記し、`m4_tasklist.md` Phase 0 で **「デフォルト維持」＝削除フェーズのみ中断** と決定済み（スペック差分なしとされている）。
+- **仕様**: `docs/specs/26070811-m4_ingestion_and_demo/spec.md` §4.3/§14 は「安全弁発動時に実行全体をerrorにするか、削除フェーズのみ中断して追加/更新は残すか」を未決事項として明記し、`docs/specs/26070811-m4_ingestion_and_demo/tasklist.md` Phase 0 で **「デフォルト維持」＝削除フェーズのみ中断** と決定済み（スペック差分なしとされている）。
 - **実装との齟齬**: 追加/更新は各ドキュメントごとに既にcommit済み（`_process_one` 内で都度 `db.commit()`、`indexer.py:95,113,126`）にもかかわらず、安全弁が働くと `run.status = "error"` で**実行全体**を error 扱いにする。`test_ingestion_indexer.py:236` もこの挙動をそのままアサートしている。
 - **なぜ問題か**: `GET /api/ingest/runs` やCLI出力を見る運用者・UI・監視は「全滅」と「追加更新は成功、削除だけ安全に見送られた」を区別できない。
-- **提案**: 一存で実装側に寄せず、まず差分をチームに提示して合意を取る（AGENTS.md §12）。選択肢: (a) 安全弁トリップ時も `status="success"` のまま警告を`stats`/専用フィールドに残す、(b) `running`/`success`/`error` に加え `partial` 相当の状態を設ける。決定後は `m4_ingestion_and_demo.md` §14 の記述・該当テストも合わせて更新する。
+- **提案**: 一存で実装側に寄せず、まず差分をチームに提示して合意を取る（AGENTS.md §12）。選択肢: (a) 安全弁トリップ時も `status="success"` のまま警告を`stats`/専用フィールドに残す、(b) `running`/`success`/`error` に加え `partial` 相当の状態を設ける。決定後は `docs/specs/26070811-m4_ingestion_and_demo/spec.md` §14 の記述・該当テストも合わせて更新する。
 
 ### 2. `DELETE /api/index` が `start_run` と同じ排他（advisory lock）を取っていない
 
@@ -125,7 +125,7 @@ p_ingest.add_argument("--force-delete", action="store_true",
 
 ## E. 補足（コードではなく仕様プロセス）
 
-`m4_tasklist.md` Phase 8（§13 上位ドキュメント反映: `db_design.md`/`architecture.md`/`requirements.md`、最終 `make lint`/`make test`、PRでのFR-1/2/7/8・NFR-8明記）が全項目未チェック。また同ファイルchangelog最新行（v0.4）は「Phase 3実装完了、Phase4以降は未着手」と書かれているが、本文のPhase 4〜7チェックボックスは全てチェック済みになっており、changelogと本文が食い違っている。AGENTS.md §10のDoDは「関連するdocs/specsを更新した」を要求しているため、マージ前にどちらが実態か確認しPhase 8を消化する必要がある。
+`docs/specs/26070811-m4_ingestion_and_demo/tasklist.md` Phase 8（§13 上位ドキュメント反映: `db_design.md`/`architecture.md`/`requirements.md`、最終 `make lint`/`make test`、PRでのFR-1/2/7/8・NFR-8明記）が全項目未チェック。また同ファイルchangelog最新行（v0.4）は「Phase 3実装完了、Phase4以降は未着手」と書かれているが、本文のPhase 4〜7チェックボックスは全てチェック済みになっており、changelogと本文が食い違っている。AGENTS.md §10のDoDは「関連するdocs/specsを更新した」を要求しているため、マージ前にどちらが実態か確認しPhase 8を消化する必要がある。
 
 ---
 
@@ -139,4 +139,4 @@ p_ingest.add_argument("--force-delete", action="store_true",
 
 - 既存テスト `backend/tests/test_ingestion_indexer.py` / `test_ingestion_concurrency.py` / `test_ingestion_diff.py` / `test_ingest_api.py` を修正のたびに実行。
 - `make lint` / `make test`（mypy未導入の懸念はB章末尾を参照。対応するかどうかも合意が必要）。
-- A-1を修正する場合は `docs/specs/m4_ingestion_and_demo.md` §14 の記述更新も合わせて行う（AGENTS.md §12）。
+- A-1を修正する場合は `docs/specs/26070811-m4_ingestion_and_demo/spec.md` §14 の記述更新も合わせて行う（AGENTS.md §12）。

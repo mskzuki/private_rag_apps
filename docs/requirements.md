@@ -139,13 +139,13 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 - プロンプト・検索ロジック・チャンキング変更時に**回帰を検出**できること（→ §9, CI 連携）
 - 最小 Eval（10 問 + Recall@5）は **M0 から**運用する（→ §10）
-- 正解ラベルは **文書（path）レベル**で持つ（chunk_id 非依存。チャンキング変更後もデータセットを再利用するため → `docs/specs/m3_eval_expansion.md` §3.3）
+- 正解ラベルは **文書（path）レベル**で持つ（chunk_id 非依存。チャンキング変更後もデータセットを再利用するため → `docs/specs/26070805-m3_eval_expansion/spec.md` §3.3）
 - Recall@10 計測のため、評価時は本番 `top_k` と別の **`EVAL_TOP_K`（≥10）** で取得する
 - CI ゲートは **検索指標=ハード / 生成指標=ソフト**（LLM-as-judge のノイズを許容。同 §7.3）
 
 ### NFR-2 パフォーマンス
 
-- TTFT（初回トークンまで）の目標値を設定（例: p95 < 2.0s）※ M2 で実測しベースラインから暫定確定（→ `docs/specs/m2_streaming_and_history.md` §7）
+- TTFT（初回トークンまで）の目標値を設定（例: p95 < 2.0s）※ M2 で実測しベースラインから暫定確定（→ `docs/specs/26070718-m2_streaming_and_history/spec.md` §7）
 - 検索レイテンシ p95 目標（例: < 500ms、リランク込み）※ 同上
 - 計測は**初回ターン / フォローアップを分けて**行う（フォローアップは condense の LLM 呼び出しが TTFT に直列に乗るため、同一目標にしない）
 
@@ -244,7 +244,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 - **段階導入**:
   - **M0: 最小 Eval**（10 問 + Recall@5 のみ）を導入し、以降のすべての検索・プロンプト変更の前後で実行する
   - **M3: 拡充**（30〜50 問、生成指標、CI 連携）
-- **実行**: `make eval` でローカル実行。CI では **プロンプト・検索・チャンキング・生成・evals 変更を含む PR** で自動実行し、**committed baseline** からの劣化を検出（検索=ハードゲート / 生成=ソフト。詳細 → `docs/specs/m3_eval_expansion.md` §7）
+- **実行**: `make eval` でローカル実行。CI では **プロンプト・検索・チャンキング・生成・evals 変更を含む PR** で自動実行し、**committed baseline** からの劣化を検出（検索=ハードゲート / 生成=ソフト。詳細 → `docs/specs/26070805-m3_eval_expansion/spec.md` §7）
 - 結果はスコアの推移として記録（回帰の可視化）
 
 > 最小 Eval を M0 に置く理由: M1（ハイブリッド化 + リランク）は本プロジェクト最大の検索変更であり、計測なしで実施すると「Eval がショーケースの核」という主張と矛盾するため。
@@ -271,7 +271,7 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 - **SaaS コネクタ**(Notion / Slack)+ **OAuth 認証・トークン管理**
   - 導入時は増分同期カーソル・接続管理・バックグラウンドジョブ(ARQ)もセットで再検討
-- **Google Drive の限定的な取り込み**(単一固定フォルダ・サービスアカウント認証・OAuth 不使用)は **M9 でスコープイン済み**（`docs/specs/m9_google_drive_ingestion.md`）。API 経由トリガのみプロセス非依存の再試行のため ARQ/Redis を併用する（スケジューリングは行わない）。複数フォルダ・複数 Drive アカウントの接続管理、OAuth ベースの認可は引き続き将来拡張として残る
+- **Google Drive の限定的な取り込み**(単一固定フォルダ・サービスアカウント認証・OAuth 不使用)は **M9 でスコープイン済み**（`docs/specs/26071710-m9_google_drive_ingestion/spec.md`）。API 経由トリガのみプロセス非依存の再試行のため ARQ/Redis を併用する（スケジューリングは行わない）。複数フォルダ・複数 Drive アカウントの接続管理、OAuth ベースの認可は引き続き将来拡張として残る
 - **ACL 権限考慮検索**(マルチユーザー化の目玉。ドキュメント単位のアクセス制御をソースから同期)
 - **エージェンティック RAG**(クエリ分解 / 多段検索 / 自己評価ループ)
 - **PDF / Office 取り込み**(パーサ導入)
@@ -294,12 +294,4 @@ SaaS コネクタ（Notion / Slack / Google Drive）と OAuth を **v1 スコー
 
 ## 変更履歴
 
-| version | 日付 | 変更 |
-|---|---|---|
-| v0.7 | 2026-07-17 | M9 スペック起票に伴うスコープ改訂: §2/§11 の「SaaS コネクタ」除外リストから Google Drive を外し、限定版（単一固定フォルダ・サービスアカウント認証・OAuth 不使用・API 経由トリガのみ ARQ/Redis 併用）を M9 でスコープイン済みと明記（`docs/specs/m9_google_drive_ingestion.md`）。Notion/Slack・複数フォルダ管理・OAuth ベース認可は引き続き将来拡張。ヘッダのバージョン表記の記載不整合（v0.5 表記 vs 変更履歴最新 v0.6）も本版で是正 |
-| v0.6 | 2026-07-13 | §12 Definition of Success の各項目をクローズ。デモGIF・Langfuseスクショ・別マシン実測は意図的な先送りとして注記（根拠は `docs/decisions.md`） |
-| v0.5 | 2026-07-09 | §7 技術選定をフロントエンド（§7.1）/ バックエンド（§7.2）の 2 表に分割（内容変更なし） |
-| v0.4 | 2026-07-08 | 全体レビュー反映: Python を 3.13 に更新（AGENTS v0.6 との矛盾解消）。**Langfuse を任意化**（NFR-4 no-op / NFR-8 必須アカウントから除外）。M2 スペック追従: NFR-2 に初回/フォローアップ別計測を明記。M3 スペック追従: NFR-1/§9 に **path レベル正解（chunk_id 非依存）**・`EVAL_TOP_K` 分離・**検索ハード/生成ソフトのゲート**・committed baseline・CI トリガ範囲拡大を反映。FR-4 に棄権（abstain）の実体を注記。§10 M0 に**基本 CI(lint/test)** を追加。§12 に Eval レポート公開パスを明記。ヘッダのドラフト表記を除去 |
-| v0.3 | 2026-07-07 | チャット UI ライブラリに assistant-ui を採用（§7 に行追加）。ChatKit は OpenAI API 密結合のため不採用 |
-| v0.2 | 2026-07-07 | SaaS コネクタ(Notion/Slack/Drive)・OAuth をスコープ外へ移動。シードコーパス+デモモード(FR-7)・データ管理UI(FR-8)を追加。全文検索を pg_bigm に統一(§7)。最小 Eval を M0 に前倒し(§9)、Langfuse 計装を M0 に前倒し(NFR-4)。NFR-8 再現性・§12 Definition of Success を追加。§6/§8 を概要+参照に縮約(正は architecture.md / db_design.md)。取り込みは CLI 実行とし ARQ/Redis を将来拡張へ |
-| v0.1 | 2026-07-04 | 初版(壁打ちドラフト) |
+変更の経緯・判断根拠は `docs/decisions.md`、詳細な変更点は `git log -- docs/requirements.md` を参照。現行 v0.7（2026-07-17）。

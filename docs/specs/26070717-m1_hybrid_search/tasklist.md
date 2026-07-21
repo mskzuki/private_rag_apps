@@ -1,11 +1,11 @@
 # M1 ハイブリッド検索 + リランク タスクリスト
 
-`docs/specs/m1_hybrid_search.md` に基づくタスク一覧です。
+`docs/specs/26070717-m1_hybrid_search/spec.md` に基づくタスク一覧です。
 前提: **M0（Walking Skeleton）完了済み**。
 各機能タスクには**対応するテストを同時に**含めます（AGENTS §8）。LLM・埋め込み・rerank 呼び出しはテストでモックします。
 **API 契約（`POST /api/chat` の `{content, citations}`）は M1 を通して不変**です。変更は検索段の内部に閉じます。
 
-> **M5監査（2026-07-13）**: 本タスクリストは `docs/specs/m1_hybrid_search.md` §7 Definition of Done の項目別エビデンス検証（すでに完了済み）を根拠に、実装ステップ単位で一括チェックした（bulk pass）。DoD検証で見つかった齟齬（`0002`マイグレーションのno-op化、APIのSSE化、全文検索SQL統合テストの欠如）は該当行に注記した。
+> **M5監査（2026-07-13）**: 本タスクリストは `docs/specs/26070717-m1_hybrid_search/spec.md` §7 Definition of Done の項目別エビデンス検証（すでに完了済み）を根拠に、実装ステップ単位で一括チェックした（bulk pass）。DoD検証で見つかった齟齬（`0002`マイグレーションのno-op化、APIのSSE化、全文検索SQL統合テストの欠如）は該当行に注記した。
 >
 > **M5追記（2026-07-13、実インフラでのライブラン時）**: 上記で「未実装」と記録していた統合テストの欠如が、実際に本番相当のバグを見逃していたことを確認した。`retrieval/searcher.py` の `_hybrid_search` が組み立てる生SQLで `c.embedding <=> :q_embedding::vector` のように bind パラメータ直後に `::` 型キャストを続けていたため、SQLAlchemy の `text()` が `:q_embedding` を bind パラメータとして認識できず（`::` 直前の `:` を bind マーカーとして扱わない既知の仕様）、`hybrid`/`hybrid_rerank` 戦略（**既定戦略**）が常に SQL 構文エラーで失敗する状態だった。`test_retrieval.py` は RRF 計算のロジックのみをモックで検証しており実 SQL には触れないため、この回帰は検出されなかった。`CAST(:q_embedding AS vector)` に修正し、実 DB に対する `retrieve_context(strategy="hybrid"/"hybrid_rerank")` の smoke test で解消を確認済み。
 
@@ -17,9 +17,9 @@
 
 - `[x]` **M1-2 全文検索 (pg_bigm)**（確認: `retrieval/searcher.py:103-109` の `fts_search` CTE）
   - `[x]` pg_bigm 検索クエリの実装（`bigm_similarity` 降順、候補 `CANDIDATE_K=50`、`sources.deleted_at IS NULL` で除外）（確認: `searcher.py:103-109`、既定値 `core/config.py:20` `candidate_k: int = 50`）
-  - `[x]` `=%` の類似度しきい値（`pg_bigm.similarity_limit` 既定0.3）の挙動確認（確認: `m1_hybrid_search.md` §8 に既定0.3で運用する旨の記録あり）
+  - `[x]` `=%` の類似度しきい値（`pg_bigm.similarity_limit` 既定0.3）の挙動確認（確認: `docs/specs/26070717-m1_hybrid_search/spec.md` §8 に既定0.3で運用する旨の記録あり）
   - *完了条件*: 固有語を含むクエリで該当チャンクが返ること（統合テスト）。
-  - *テスト*: 全文検索 SQL の統合テスト（テスト用 DB に日本語チャンク投入 → 語彙一致で期待チャンクが返る / 0件クエリでも例外にならない）。 — **未確認**: `backend/tests/` を `bigm`/`=%`/`gin_bigm`/`hybrid_search` で検索してもヒットせず、pg_bigmの全文検索SQLを実DBに対して実行するテストは見当たらない。`tests/test_retrieval.py` はRRFスコアの純粋ロジックとrerankのモックテストのみ。この統合テストは**未実装として記録**（`m1_hybrid_search.md` §7 の同注記を参照）
+  - *テスト*: 全文検索 SQL の統合テスト（テスト用 DB に日本語チャンク投入 → 語彙一致で期待チャンクが返る / 0件クエリでも例外にならない）。 — **未確認**: `backend/tests/` を `bigm`/`=%`/`gin_bigm`/`hybrid_search` で検索してもヒットせず、pg_bigmの全文検索SQLを実DBに対して実行するテストは見当たらない。`tests/test_retrieval.py` はRRFスコアの純粋ロジックとrerankのモックテストのみ。この統合テストは**未実装として記録**（`docs/specs/26070717-m1_hybrid_search/spec.md` §7 の同注記を参照）
 
 - `[x]` **M1-3 RRF 融合 + RetrievalStrategy**（確認: `retrieval/searcher.py:84-156` `_hybrid_search`）
   - `[x]` RRF 融合 SQL の実装（ベクトル CTE + 全文 CTE → `1/(RRF_K + rank)` 合算 → 上位 `FUSE_K=40`。db_design §6 準拠）（確認: `searcher.py:94-120`。既定値 `core/config.py:21-22` `rrf_k=60`, `fuse_k=40`）
@@ -40,7 +40,7 @@
 - `[x]` **M1-5 生成への配線（API 契約不変）**（確認: `api/main.py:159,170`）
   - `[x]` 生成 context を top-5（M0）→ `RERANK_TOP_K=8` に変更（出典番号 `[1..8]` の対応付け）（確認: `generation/generator.py:47-55` の列挙、既定 `rerank_top_k=8`）
   - `[x]` 既定戦略を `hybrid_rerank` に設定（確認: `core/config.py:19`）
-  - `[ ]` M0 の受け入れシナリオ（コーパス内 S2 / コーパス外 S3）の回帰確認 — **未チェック**: `m0_walking_skelton.md` §7 で確認した通り、`/api/chat` は現在SSEストリーミングでありM0のJSON `{content, citations}` 契約とは形式が異なる。中身（出典・not-found）の等価性はSSEイベント経由で保たれているが、字句通りの「レスポンス形式がM0と同一」は現状のコードでは成立しない
+  - `[ ]` M0 の受け入れシナリオ（コーパス内 S2 / コーパス外 S3）の回帰確認 — **未チェック**: `docs/specs/26070714-m0_walking_skelton/spec.md` §7 で確認した通り、`/api/chat` は現在SSEストリーミングでありM0のJSON `{content, citations}` 契約とは形式が異なる。中身（出典・not-found）の等価性はSSEイベント経由で保たれているが、字句通りの「レスポンス形式がM0と同一」は現状のコードでは成立しない
   - *完了条件*: レスポンス形式が M0 と同一で後方互換が保たれていること（S1, S3 成立）。 — 上記の通り未達
   - *テスト*: API の回帰テスト（確認: `tests/test_api.py::test_chat_bulk_save_and_history` はSSEイベント列を検証。M0時点のJSON応答へのテストは現存しない — 移行済みのため）
 
@@ -50,7 +50,7 @@
   - *完了条件*: 1 回のチャットで拡張スパンと rerank コストが Langfuse に出ること（S4 成立）。
 
 - `[x]` **M1-7 Eval（before/after ★M1 の核）**（確認: `backend/src/private_rag_apps/evals/__main__.py`）
-  - `[ ]` Eval ハーネスの3モード対応（`vector` / `hybrid` / `hybrid_rerank` を横断実行） — **未チェック**: `evals/__main__.py:81` は `strategy="hybrid_rerank"` を固定で呼び出し、`diagnostic_mode=True` で得られる `fused_ranking`/`reranked_ranking` の2レッグのみを比較する。`vector`単体モードの横断実行は未実装（`m1_hybrid_search.md` §5「実装上の補足」に既知の簡略化として明記済み）
+  - `[ ]` Eval ハーネスの3モード対応（`vector` / `hybrid` / `hybrid_rerank` を横断実行） — **未チェック**: `evals/__main__.py:81` は `strategy="hybrid_rerank"` を固定で呼び出し、`diagnostic_mode=True` で得られる `fused_ranking`/`reranked_ranking` の2レッグのみを比較する。`vector`単体モードの横断実行は未実装（`docs/specs/26070717-m1_hybrid_search/spec.md` §5「実装上の補足」に既知の簡略化として明記済み）
   - `[x]` 指標の追加実装: Recall@10 / nDCG@10 / MRR（Recall@5 は M0 実装を流用）（確認: `evals/metrics.py:52-57`）
   - `[x]` 比較表の出力と保存（確認: `evals/__main__.py:190-233`。**注記**: 保存先は当初案の `evals/results/m1_<timestamp>.json` ではなく `evals/reports/m3_*.json` + `docs/eval_report.md`。M3統合ハーネスへの統合に伴う変更で§5補足に既述）
   - `[ ]` ゴールデンは M0 の `evals/golden/m0.yaml`（10問）を流用（拡充は M3） — **未チェック**: 実際には流用されておらず、`evals/dataset/m3_golden.jsonl`（31問、`core/config.py:39` `eval_dataset_path`既定値）に置き換えられている。`evals/golden/m0.yaml` は現存するがどこからも参照されないレガシーファイル
@@ -59,8 +59,8 @@
 
 - `[x]` **M1-8 仕上げ**（部分確認）
   - `[x]` `make lint` / `make test` の全通過（確認: `uv run ruff check .` を本監査で実行しPASS。**M5追記（2026-07-13）**: Docker起動の上で `pytest` をDB込みでフル実行し69件全通過を確認済み）
-  - `[ ]` PR に Eval before/after 比較表を記載（AGENTS §9） — **未チェック**: コードからは検証不能（`m1_hybrid_search.md` §7 の同項目参照）
-  - `[x]` 計測結果に基づく §8 オープン論点（similarity_limit / FUSE_K / CANDIDATE_K）の判断をスペックに反映（確認: `m1_hybrid_search.md` §8 に「現在は0.3/40/50で実装を完了」の記述あり）
+  - `[ ]` PR に Eval before/after 比較表を記載（AGENTS §9） — **未チェック**: コードからは検証不能（`docs/specs/26070717-m1_hybrid_search/spec.md` §7 の同項目参照）
+  - `[x]` 計測結果に基づく §8 オープン論点（similarity_limit / FUSE_K / CANDIDATE_K）の判断をスペックに反映（確認: `docs/specs/26070717-m1_hybrid_search/spec.md` §8 に「現在は0.3/40/50で実装を完了」の記述あり）
   - `[x]` README への結果表の反映（Definition of Success の布石） — **M5で置き換え（supersede）**: 個別の実数値テーブルをREADMEに直接掲載する当初想定は、M5のREADME設計（リンクのハブに徹し詳細は各文書に置く。重複を作らない）で置き換えられた。`README.md` の「Eval」節が `docs/eval_report.md`（実数値・詳細な推移を掲載）へ誘導する形になっており、Definition of Success の意図（Eval結果が追跡可能であること）はこの導線で満たされている
   - *完了条件*: `make lint` / `make test` が通り、before/after が記録・共有されていること。 — lint/testは確認、記録・共有の後半は未確認
 

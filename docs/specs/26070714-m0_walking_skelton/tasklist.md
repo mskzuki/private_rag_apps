@@ -1,9 +1,9 @@
 # M0 Walking Skeleton タスクリスト
 
-`docs/specs/m0_walking_skeleton.md` に基づくタスク一覧です。
+`docs/specs/26070714-m0_walking_skelton/spec.md` に基づくタスク一覧です。
 各機能タスクには**対応するテストを同時に**含めます（AGENTS §8）。LLM・埋め込み・rerank 呼び出しはテストでモックします。
 
-> **M5監査（2026-07-13）**: 本タスクリストは `docs/specs/m0_walking_skelton.md` §7 Definition of Done の項目別エビデンス検証（すでに完了済み）を根拠に、実装ステップ単位で一括チェックした（bulk pass）。個々の行を再検証してはいない。DoD が真であることが確認できた機能に包含されるタスクを `[x]` にし、DoD 検証中に見つかった実装との齟齬はその行に注記した。
+> **M5監査（2026-07-13）**: 本タスクリストは `docs/specs/26070714-m0_walking_skelton/spec.md` §7 Definition of Done の項目別エビデンス検証（すでに完了済み）を根拠に、実装ステップ単位で一括チェックした（bulk pass）。個々の行を再検証してはいない。DoD が真であることが確認できた機能に包含されるタスクを `[x]` にし、DoD 検証中に見つかった実装との齟齬はその行に注記した。
 
 - `[x]` **M0-1 インフラ設定**
   - `[x]` `docker-compose.yml` (Postgres + pgvector + pg_bigm) の作成
@@ -14,7 +14,7 @@
 - `[x]` **M0-2 データベース・マイグレーション**（確認: `backend/alembic/versions/0001_init.py` が存在し、拡張・3テーブル・HNSW索引・補助索引を作成。`make migrate` で適用される）
   - `[x]` Alembic の初期化
   - `[x]` 初期マイグレーション `0001_init` の作成
-    - 拡張機能: `pgcrypto`, `vector`, `pg_bigm`（**要注記・実装との齟齬**: 実際の `0001_init.py`（73-76行）はこの行の想定と異なり `chunks_content_bigm` GIN索引も同時に作成している。「索引は作らない → M1の0002担当」という本記述は実装と不一致。結果として `0002` マイグレーション（`0002_chunks_content_bigm.py`）は同名索引を `IF NOT EXISTS` で再作成するだけの冗長なno-opになっている。機能上の実害はない（索引は最終的に存在する）が、M1側のタスク説明も合わせて要修正 — 詳細は `m1_hybrid_search.md` §7 / `m1_tasklist.md` M1-1 参照）
+    - 拡張機能: `pgcrypto`, `vector`, `pg_bigm`（**要注記・実装との齟齬**: 実際の `0001_init.py`（73-76行）はこの行の想定と異なり `chunks_content_bigm` GIN索引も同時に作成している。「索引は作らない → M1の0002担当」という本記述は実装と不一致。結果として `0002` マイグレーション（`0002_chunks_content_bigm.py`）は同名索引を `IF NOT EXISTS` で再作成するだけの冗長なno-opになっている。機能上の実害はない（索引は最終的に存在する）が、M1側のタスク説明も合わせて要修正 — 詳細は `docs/specs/26070717-m1_hybrid_search/spec.md` §7 / `docs/specs/26070717-m1_hybrid_search/tasklist.md` M1-1 参照）
     - テーブル: `sources`, `chunks`, `ingest_runs`
     - 索引: `chunks.embedding` の **HNSW**（`vector_cosine_ops`, m=16, ef_construction=64）、および補助索引（`chunks.source_id`, `sources` の部分索引 `deleted_at IS NULL`, `ingest_runs.started_at`）
     - ※ `conversations` / `messages` は M0 では作らない（確認: `0001_init.py` に無し。M2の `0003_chat_history.py` で追加）
@@ -41,7 +41,7 @@
 
 - `[x]` **M0-5 生成 (Generation)**（確認: `generation/generator.py`, `prompts/rag.py`）
   - `[x]` プロンプトテンプレートの作成（`prompts/` に配置。system は「①コンテキストのみ ②`[n]` 出典 ③無ければ見つからない ④日本語」）（確認: `prompts/rag.py:1-4` `RAG_SYSTEM_PROMPT`）
-  - `[x]` LLM API の呼び出し（モデル ID は設定化）（確認: `generation/generator.py:64-70` `openai.responses.create(model=settings.llm_model, ...)`。**注記**: 現在は `stream=True` でストリーミング呼び出しに変わっている（M2のSSE化に伴う進化。詳細は`m0_walking_skelton.md`§7参照）。生成対象LLMもClaudeからOpenAIモデルに変わっている点は仕様上「モデルIDは設定化」の範囲内）
+  - `[x]` LLM API の呼び出し（モデル ID は設定化）（確認: `generation/generator.py:64-70` `openai.responses.create(model=settings.llm_model, ...)`。**注記**: 現在は `stream=True` でストリーミング呼び出しに変わっている（M2のSSE化に伴う進化。詳細は`docs/specs/26070714-m0_walking_skelton/spec.md`§7参照）。生成対象LLMもClaudeからOpenAIモデルに変わっている点は仕様上「モデルIDは設定化」の範囲内）
   - `[x]` 回答への `[n]` 引用整形と `citations` 配列の組み立て（title/path/heading/chunk_id）（確認: `generation/generator.py:47-55`）
   - `[x]` **不知応答はプロンプト駆動を主経路とする**（確認: `prompts/rag.py:3` のsystem指示③、`generator.py:42-45` の空コンテキスト時ガード）
   - *完了条件*: 検索結果を用いた回答生成ができ、コーパス外の質問には「見つからない」と返せること（S2, S3 成立）。
@@ -49,7 +49,7 @@
 
 - `[x]` **M0-6 API 実装**（確認: `api/main.py`）
   - `[x]` `GET /health` エンドポイント（確認: `api/main.py:79-82`）
-  - `[x]` `POST /api/chat` の実装と retrieval/generation の配線（確認: `api/main.py:123-238` `chat()`）（**注記**: 応答形式は本タスクが書く「JSON 応答」ではなく、M2以降SSEストリーミング（`EventSourceResponse`）に置き換わっている。retrieval/generationへの配線自体は健在。詳細は `m0_walking_skelton.md` §7 参照）
+  - `[x]` `POST /api/chat` の実装と retrieval/generation の配線（確認: `api/main.py:123-238` `chat()`）（**注記**: 応答形式は本タスクが書く「JSON 応答」ではなく、M2以降SSEストリーミング（`EventSourceResponse`）に置き換わっている。retrieval/generationへの配線自体は健在。詳細は `docs/specs/26070714-m0_walking_skelton/spec.md` §7 参照）
   - *完了条件*: curl から API を叩き、正しい応答が返ること（S2, S3 を API 経由で確認）。
   - *テスト*: エンドポイントの正常系・コーパス外応答（retrieval/generation はモックまたはテスト DB）。（確認: `tests/test_api.py::test_chat_bulk_save_and_history`）
 
@@ -82,5 +82,5 @@
 4. **M0-3/M0-4**: Voyage の `input_type` を document / query で使い分けと明記。
 5. **テスト分散**: 機能テストを各タスクに配置（M0-9 一括をやめる）。
 6. **M0-7**: 取り込み時埋め込みのトレースを追加。
-7. **命名**: 参照先を `m0_walking_skeleton.md` に修正（綴り・大文字）。本ファイルも `m0_task.md`。
+7. **命名**: 参照先を `docs/specs/26070714-m0_walking_skelton/spec.md` に修正（綴り・大文字）。本ファイルも `m0_task.md`。
 8. **M0-8**: スペック付録のゴールデン10問ドラフトを参照。

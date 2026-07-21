@@ -14,7 +14,7 @@
 - Public functions require type annotations; avoid `Any` (AGENTS.md §6).
 - Tests must not call real paid APIs — mock the Voyage client the same way existing tests do (AGENTS.md §8).
 - New feature needs a corresponding test (AGENTS.md §10 Definition of Done).
-- Spec already updated: `docs/specs/m4_ingestion_and_demo.md` §4.2/§10 (v0.4) and `docs/specs/m4_tasklist.md` Phase 2 (v0.6) describe this behavior — implementation must match: default `21.0`, setting name `INGEST_EMBED_MIN_INTERVAL_SEC` / `ingest_embed_min_interval_sec`.
+- Spec already updated: `docs/specs/26070811-m4_ingestion_and_demo/spec.md` §4.2/§10 (v0.4) and `docs/specs/26070811-m4_ingestion_and_demo/tasklist.md` Phase 2 (v0.6) describe this behavior — implementation must match: default `21.0`, setting name `INGEST_EMBED_MIN_INTERVAL_SEC` / `ingest_embed_min_interval_sec`.
 - Scope is ingestion only — do not touch `retrieval/searcher.py`'s query-time embed/rerank calls.
 
 ---
@@ -137,7 +137,7 @@ _last_embed_call_at: Optional[float] = None
 
 def _pace_embed_call() -> None:
     """Voyage embed呼び出し間隔がINGEST_EMBED_MIN_INTERVAL_SEC未満にならないよう待機する
-    （レート制限予防。m4_ingestion_and_demo.md §4.2）"""
+    （レート制限予防。docs/specs/26070811-m4_ingestion_and_demo/spec.md §4.2）"""
     global _last_embed_call_at
     now = time.monotonic()
     if _last_embed_call_at is not None:
@@ -194,7 +194,7 @@ Expected: no errors.
 
 ```bash
 cd /Users/mskzuk/src/private_rag_apps
-git add backend/src/private_rag_apps/core/config.py backend/.env.example backend/src/private_rag_apps/ingestion/indexer.py backend/tests/test_ingestion_indexer.py docs/specs/m4_ingestion_and_demo.md docs/specs/m4_tasklist.md
+git add backend/src/private_rag_apps/core/config.py backend/.env.example backend/src/private_rag_apps/ingestion/indexer.py backend/tests/test_ingestion_indexer.py docs/specs/26070811-m4_ingestion_and_demo/spec.md docs/specs/26070811-m4_ingestion_and_demo/tasklist.md
 git commit -m "$(cat <<'EOF'
 fix(ingestion): Voyage embed呼び出しをペーシングしレート制限429を予防する
 

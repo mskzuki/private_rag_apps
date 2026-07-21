@@ -1,6 +1,6 @@
 # M0 — Walking Skeleton（フィーチャースペック）
 
-> 配置先: `docs/specs/m0_walking_skeleton.md`
+> 配置先: `docs/specs/26070714-m0_walking_skelton/spec.md`
 > 準拠: requirements.md v0.3 / architecture.md v0.3 / db_design.md v0.2 / AGENTS.md v0.3
 > ステータス: ドラフト v0.1
 

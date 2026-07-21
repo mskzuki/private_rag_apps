@@ -1,13 +1,13 @@
 # Eval レポート
 
-> 本ページは M5 ショーケース仕上げの一部として、実際の `make eval` 実行結果をもとに作成しています（`docs/specs/m5_release_readiness.md` §5）。
+> 本ページは M5 ショーケース仕上げの一部として、実際の `make eval` 実行結果をもとに作成しています（`docs/specs/26070922-m5_release_readiness/spec.md` §5）。
 > 数値はすべて **M3 Eval ハーネス（`backend/src/private_rag_apps/evals/`）が生成する machine-readable JSON / human-readable Markdown サマリを一次ソースとして引用**しており、手書きの数値・捏造は一切行っていません（M5スペック§5.3）。一次ソースは `backend/evals/reports/latest_summary.md`（毎回上書き）と `backend/evals/baselines/current.json`（committed baseline）です。
 
 ## 1. 狙い（測定指標）
 
 - **Retrieval**: Recall@5 / Recall@10 / nDCG@10 / MRR（RRF融合直後＝fused と、リランク後＝reranked の両方を計測し、リランクの寄与を可視化する）
 - **Generation**: Faithfulness（コンテキストに忠実か）/ Answer Relevance（質問に対して的確か）を LLM-as-judge で採点（NFR-1）
-- 検索指標はハードゲート（許容誤差 0.05 超の低下で FAIL）、生成指標はソフトゲート（許容誤差 0.1 超の低下で WARN）で回帰を検出する（`docs/specs/m3_eval_expansion.md` §7）
+- 検索指標はハードゲート（許容誤差 0.05 超の低下で FAIL）、生成指標はソフトゲート（許容誤差 0.1 超の低下で WARN）で回帰を検出する（`docs/specs/26070805-m3_eval_expansion/spec.md` §7）
 
 ## 2. データセット
 
@@ -59,4 +59,4 @@
 
 ---
 
-関連: [docs/decisions.md](decisions.md) / [docs/specs/m3_eval_expansion.md](specs/m3_eval_expansion.md) / [docs/specs/m5_release_readiness.md](specs/m5_release_readiness.md) / 生データ: `backend/evals/reports/latest_summary.md`（都度生成・gitignore対象）/ `backend/evals/baselines/current.json`（committed baseline）
+関連: [docs/decisions.md](decisions.md) / [docs/specs/26070805-m3_eval_expansion/spec.md](docs/specs/26070805-m3_eval_expansion/spec.md) / [docs/specs/26070922-m5_release_readiness/spec.md](docs/specs/26070922-m5_release_readiness/spec.md) / 生データ: `backend/evals/reports/latest_summary.md`（都度生成・gitignore対象）/ `backend/evals/baselines/current.json`（committed baseline）

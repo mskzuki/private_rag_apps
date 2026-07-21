@@ -1,6 +1,6 @@
-# Private RAG Apps — M4 フィーチャースペック: 増分再取り込み・データ管理 UI・デモモード仕上げ (m4_ingestion_and_demo.md)
+# Private RAG Apps — M4 フィーチャースペック: 増分再取り込み・データ管理 UI・デモモード仕上げ (docs/specs/26070811-m4_ingestion_and_demo/spec.md)
 
-> 配置先: `docs/specs/m4_ingestion_and_demo.md`
+> 配置先: `docs/specs/26070811-m4_ingestion_and_demo/spec.md`
 > 対象マイルストーン: **M4**（requirements.md §10）
 > 充足要件: **FR-1 / FR-7 / FR-8 / FR-2（増分部分の完全化）**、**NFR-8（完全）**、関連 **NFR-3 / NFR-4 / NFR-7**
 > 上位ドキュメント: 要件=`requirements.md`(v0.4)、構成=`architecture.md`(v0.4)、物理設計=`db_design.md`(v0.2)、規約=`AGENTS.md`(v0.7)。
@@ -274,7 +274,7 @@ make demo:  docker compose up -d db  →  make migrate  →  make ingest CORPUS=
 - [x] `make demo` が 1 コマンドで「DB→migrate→seed 取り込み→チャット可能」まで到達する
 - [x] seed が日本語含む現実的構成で、**M3 Eval データセットの path 実在チェックが通る**
 - [x] `docker compose up` で **pgvector + pg_bigm 入り DB** が起動し `CREATE EXTENSION` が通る
-- [ ] クリーン環境で `git clone → docker compose up → make demo` が **15 分以内**に成功する（実測）→ **部分実測のみ**（`docs/specs/m4_tasklist.md` Phase 7 参照）。docker build(pg_bigm込み)・DB起動・migrateは合計1分未満で完了を確認したが、実際の`VOYAGE_API_KEY`が無く埋め込み込みのフル実行は未実測。実キー設定後にユーザー側での最終実測が必要
+- [ ] クリーン環境で `git clone → docker compose up → make demo` が **15 分以内**に成功する（実測）→ **部分実測のみ**（`docs/specs/26070811-m4_ingestion_and_demo/tasklist.md` Phase 7 参照）。docker build(pg_bigm込み)・DB起動・migrateは合計1分未満で完了を確認したが、実際の`VOYAGE_API_KEY`が無く埋め込み込みのフル実行は未実測。実キー設定後にユーザー側での最終実測が必要
 - [x] `LANGFUSE_*` 未設定でもデモが完動する
 
 **共通（AGENTS.md §10）**
@@ -320,7 +320,7 @@ make demo:  docker compose up -d db  →  make migrate  →  make ingest CORPUS=
 
 ## 14. 実装順序の目安 → 次アクション
 
-AGENTS.md §12 に従い、**本スペック → `docs/specs/m4_tasklist.md` → 実装**の順で進める。概略の依存順:
+AGENTS.md §12 に従い、**本スペック → `docs/specs/26070811-m4_ingestion_and_demo/tasklist.md` → 実装**の順で進める。概略の依存順:
 
 1. `docker-compose.yml` + pg_bigm 入り Postgres イメージ（M3 CI の安定化にも効くので早めに）
 2. 増分再取り込み（content_hash 判定 + **復活経路** → 埋め込み事前 → 短トランザクション全置換 → 削除反映 + 安全弁 → **running 行排他 + stale 回収** → stats 逐次記録）
@@ -331,7 +331,7 @@ AGENTS.md §12 に従い、**本スペック → `docs/specs/m4_tasklist.md` →
 7. 15 分クイックスタート実測 + README quickstart 本文
 8. 仕上げ: §11 受け入れ条件、§13 上位ドキュメント反映
 
-> 次に作成すべき成果物は **`docs/specs/m4_tasklist.md`**（AGENTS.md §12）。
+> 次に作成すべき成果物は **`docs/specs/26070811-m4_ingestion_and_demo/tasklist.md`**（AGENTS.md §12）。
 
 ---
 

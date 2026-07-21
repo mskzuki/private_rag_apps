@@ -1,6 +1,6 @@
-# Private RAG Apps — M6 フィーチャースペック: ローカルLLMプロバイダ（Ollama/Qwen3.5）切り替え (m6_local_llm_provider.md)
+# Private RAG Apps — M6 フィーチャースペック: ローカルLLMプロバイダ（Ollama/Qwen3.5）切り替え (docs/specs/26071416-m6_local_llm_provider/spec.md)
 
-> 配置先: `docs/specs/m6_local_llm_provider.md`
+> 配置先: `docs/specs/26071416-m6_local_llm_provider/spec.md`
 > 対象マイルストーン: **M6**（M0〜M5 完了後の追加拡張。requirements.md には未記載のため、本スペックが一次ソース）
 > 上位ドキュメント: 要件=`requirements.md`(v0.6)、構成=`architecture.md`(v0.5)、物理設計=`db_design.md`(v0.3)、規約=`AGENTS.md`(v0.9)。
 > **矛盾時の優先順位**（AGENTS.md 冒頭）: 本スペック > AGENTS.md > 一般慣習。

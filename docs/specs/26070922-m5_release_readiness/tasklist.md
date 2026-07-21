@@ -1,7 +1,7 @@
-# M5 タスクリスト (m5_tasklist.md)
+# M5 タスクリスト (docs/specs/26070922-m5_release_readiness/tasklist.md)
 
-> 配置先: `docs/specs/m5_tasklist.md`
-> 対応スペック: `docs/specs/m5_release_readiness.md`（v0.2、以下「スペック」）
+> 配置先: `docs/specs/26070922-m5_release_readiness/tasklist.md`
+> 対応スペック: `docs/specs/26070922-m5_release_readiness/spec.md`（v0.2、以下「スペック」）
 > 進め方: 上から順に実施。各タスクに対応スペックの節番号を付記。
 > M5 は**新機能を追加しない**（素材化と監査。AGENTS.md §11）。プロダクションコードの追加は原則なく、追加ツール（link checker 等）にのみ最小の検証を付ける。
 
@@ -11,7 +11,7 @@
 
 > M5 は他マイルストーンを束ねる唯一のフェーズ。監査対象が動く標的にならないよう、実装完了を前提にする。
 
-- [x] **M0〜M4 の各受け入れ条件がクローズ済み**であることを確認（各 `docs/specs/mN_*` のチェックリスト）— **実質クローズと扱う**: `m1_tasklist.md`（README結果表の扱い等の一部）・`m2_tasklist.md`・`m3_tasklist.md`・`m4_tasklist.md` に残る未チェック項目は、genuine gap（未配線の設定・individual集計の欠如等、挙動変更を伴うため意図的にM5対象外）として個別に記録済み。コミット`ceec7ad`（M0-M4是正）と同じ前例に倣い、M5自身が提供するインフラでしか検証できない循環依存を認めて並行実施し、2026-07-13にプロジェクトオーナー判断でこれらのgenuine gapを将来対応事項として切り出した上でクローズとした（`docs/decisions.md`参照）
+- [x] **M0〜M4 の各受け入れ条件がクローズ済み**であることを確認（各 `docs/specs/mN_*` のチェックリスト）— **実質クローズと扱う**: `docs/specs/26070717-m1_hybrid_search/tasklist.md`（README結果表の扱い等の一部）・`docs/specs/26070718-m2_streaming_and_history/tasklist.md`・`docs/specs/26070805-m3_eval_expansion/tasklist.md`・`docs/specs/26070811-m4_ingestion_and_demo/tasklist.md` に残る未チェック項目は、genuine gap（未配線の設定・individual集計の欠如等、挙動変更を伴うため意図的にM5対象外）として個別に記録済み。コミット`ceec7ad`（M0-M4是正）と同じ前例に倣い、M5自身が提供するインフラでしか検証できない循環依存を認めて並行実施し、2026-07-13にプロジェクトオーナー判断でこれらのgenuine gapを将来対応事項として切り出した上でクローズとした（`docs/decisions.md`参照）
 - [x] 未クローズ項目があれば M5 に入らず、該当マイルストーンへ差し戻す — 残る未チェック項目は挙動変更を要する genuine gap（M5スコープ外）であり差し戻し対象では無いと判断。差し戻さずクローズ
 - [x] スペック §14 未決の初期判断を確定
   - [x] `docs/decisions.md` を単一索引にするか ADR 群にするか（既定: 単一索引 + specs リンク）— 既定どおり単一索引形式で作成済み（`docs/decisions.md` 冒頭に明記）
@@ -28,7 +28,7 @@
 - [x] **API 監査**: architecture §7 のエンドポイント表 ⇄ 実ルート（M2 の `POST /api/conversations`・SSE、M4 の sources/ingest/index）— コミット`ceec7ad`等の先行監査で実施済み、`api/main.py` の全ルートと architecture.md の対応を確認
 - [x] **DB 監査**: db_design §4/§5 の DDL・インデックス ⇄ 実マイグレーション（0001_init）。**「DDL 変更なし」を貫けたか**（M2〜M4 の advisory lock 等での回避）を確認 — 先行監査で確認済み。本セッションでも `\dx`/`alembic current` で拡張・インデックスの実在を再確認
 - [x] **依存方向監査**: AGENTS §3 のルール ⇄ 実 import（LLM は generation/evals のみ、埋め込みは ingestion/retrieval のみ 等）— コミット`ffb341f`で AGENTS.md §3 を実装に合わせて是正済み。import-linter等の機械チェックは未導入のまま（任意項目）
-- [x] **specs 監査**: `docs/specs/mN_*` が実装された姿と一致（妥当な逸脱は AGENTS §12 で spec を後追い更新し痕跡を残す）— 先行監査（`ceec7ad`）に加え、本セッションで新たに見つかった実バグ2件（`retrieval/searcher.py` のSQL bind paramバグ、Voyage `max_retries`未設定バグ）を `m1_tasklist.md`/`m4_tasklist.md` に追記
+- [x] **specs 監査**: `docs/specs/mN_*` が実装された姿と一致（妥当な逸脱は AGENTS §12 で spec を後追い更新し痕跡を残す）— 先行監査（`ceec7ad`）に加え、本セッションで新たに見つかった実バグ2件（`retrieval/searcher.py` のSQL bind paramバグ、Voyage `max_retries`未設定バグ）を `docs/specs/26070717-m1_hybrid_search/tasklist.md`/`docs/specs/26070811-m4_ingestion_and_demo/tasklist.md` に追記
 - [x] **設定キー監査**: 各 spec 定義の設定 ⇄ `core/config.py` / `.env.example` — 本セッションで `core/config.py` の全16項目の不足キー（retrieval/chat・streaming/evaluation）を `.env.example` に追記し解消
 - [x] ドリフトの**是正コミット**（`docs:` またはコード側）を作り、監査結果を PR に残す（方向は実装優先）— 本セッションのコミット群（evals出力先分離・CI pg_bigm修正・.env.example補完・Anthropic参照是正・SQLバグ修正・Voyage retry修正・タスクリスト遡及更新）が該当
 
@@ -50,7 +50,7 @@
 > 数値は **M3 生成サマリの引用**（M5 で差し込み機構を新設しない）。手書き数値・捏造を作らない。
 
 - [x] 最新の `make eval` を実行し、M3 の人間可読サマリ（before/after・リランク前後・生成品質・provenance）を最新化 — 2026-07-13、Docker+実APIキーで31問完走。`backend/evals/reports/latest_summary.md`/`backend/evals/baselines/current.json` を参照
-- [x] **M3 サマリが引用できる見出し構造・粒度**であることを確認（不足なら M3 側の課題として起票。スペック §14）— 概ね十分だったが、negative棄権率の個別内訳とM0(ベクトル単独)比較は見出しに存在しないことが判明。M3側の課題として `m3_tasklist.md`/`docs/eval_report.md` §6 に記録（起票）
+- [x] **M3 サマリが引用できる見出し構造・粒度**であることを確認（不足なら M3 側の課題として起票。スペック §14）— 概ね十分だったが、negative棄権率の個別内訳とM0(ベクトル単独)比較は見出しに存在しないことが判明。M3側の課題として `docs/specs/26070805-m3_eval_expansion/tasklist.md`/`docs/eval_report.md` §6 に記録（起票）
 - [x] `docs/eval_report.md` を作成: 狙い（測る指標）→ データセット（規模/種別/**path 正解**）→ **スコア推移（M0 ベクトル → M1 ハイブリッド → +リランク）** → 生成品質（Faithfulness/Answer Relevance・**negative 棄権率**）→ provenance → 限界と今後 — 作成済み。**ただしM0(ベクトル単独)は harness が計測しないため、fused(ハイブリッド)対reranked(+リランク)の2段階比較にとどめ、その旨を正直に明記**（数値の捏造はしていない）
 - [x] 数値は M3 サマリからの**引用/リンク**で載せ、手書きの解釈テキストと明確に分離 — `docs/eval_report.md` の表は `latest_summary.md`/`current.json` からの引用のみで構成
 - [x] **再実行で同じ数値が出る**ことを確認（乖離＝更新漏れ or 非決定性の兆候。§13）— `corpus_hash` を含むprovenanceで入力の同一性を検証可能な設計。LLM/judgeの非決定性がある旨は限界として明記済み。実際の再実行による数値比較は課金・時間コストの都合で本セッションでは実施していない
@@ -85,7 +85,7 @@
 
 - [x] 位置づけ（4 本柱: Eval / 可観測性 / クリーン境界 / 信頼性。**判断の痕跡を見せる repo** と明言。§1）— README.md 冒頭に記載済み
 - [ ] デモ GIF を上部に配置（「本当に動く」を即伝える）— GIF未取得のためプレースホルダ（`<!-- TODO -->`）のまま。`docs/assets/README.md` に手順あり
-- [x] クイックスタート（`git clone → docker compose up → make demo`・必要キー: OpenAI/Voyage 必須・**Langfuse 任意**・所要時間。M4 本文を確定）— 記載済み。本セッションで実キーによる `make demo` 完走を確認（`m4_tasklist.md` 参照）
+- [x] クイックスタート（`git clone → docker compose up → make demo`・必要キー: OpenAI/Voyage 必須・**Langfuse 任意**・所要時間。M4 本文を確定）— 記載済み。本セッションで実キーによる `make demo` 完走を確認（`docs/specs/26070811-m4_ingestion_and_demo/tasklist.md` 参照）
 - [x] アーキ図を掲載 — 掲載済み（Phase 5 参照）
 - [x] 技術スタックと根拠（requirements §7 の要約＋詳細リンク）— README.md §「技術スタックと根拠」に記載済み
 - [x] 設計判断・Eval レポート・可観測性・specs・設計文書一式へのリンク — README.md §「設計文書・品質・可観測性」に記載済み
@@ -116,7 +116,7 @@
 
 - [x] スペック §12 の受け入れ条件をすべてチェック（README/Eval/可観測性/設計判断・文書一致/再現性・整備/総括）— **クローズ判断（2026-07-13、プロジェクトオーナー承認）**: Langfuseスクショ3枚・デモGIF・別マシンでの真クリーンルーム実測・CI修正の実GitHub Actions確認の4項目はブラウザ操作/別マシン/リモート接続を要しエージェントでは実施不可のため、意図的に先送りした上でチェック済みとした。根拠は [docs/decisions.md「M5クローズ範囲の判断」](../decisions.md#m5クローズ範囲の判断スクショgif別マシン実測ci実行確認を先送り)、引き継ぎ手順は `docs/assets/README.md` 参照
 - [x] `requirements.md` §12 Definition of Success の各項目を埋める（実体へのリンクを添える）— 埋めた。上記の意図的な先送り事項は各項目に注記
-- [x] §9 監査で見つかった差分を各 `docs/specs/mN_*` に後追い反映済みであることを確認 — 本セッションで `m1`/`m2`/`m3`/`m4_tasklist.md` に反映済み
+- [x] §9 監査で見つかった差分を各 `docs/specs/mN_*` に後追い反映済みであることを確認 — 本セッションで `m1`/`m2`/`m3`/`docs/specs/26070811-m4_ingestion_and_demo/tasklist.md` に反映済み
 - [x] **M0〜M5 完了**を確認 — 完了と扱う。残る人手作業（Langfuse鍵再発行とスクショ撮影、デモGIF録画、別マシン実測、CI実行確認）は `docs/decisions.md`/`docs/assets/README.md` に引き継ぎ済みの上での完了
 
 ---
@@ -127,4 +127,4 @@
 |---|---|---|
 | v0.3 | 2026-07-13 | プロジェクトオーナー判断でM5をクローズ。Phase 0の入口ゲート・Phase 9をチェック。Langfuseスクショ・デモGIF・別マシン実測・CI実行確認の4項目は意図的な先送りとして`docs/decisions.md`に根拠を記録した上でクローズ扱いとした |
 | v0.2 | 2026-07-13 | 実インフラでのライブラン実施を反映。Phase 1/2/6/7（一部）は先行コミット（`ffb341f`/`0987763`/`ceec7ad`/`cc1a759`/`f0c82c5`/`ec08790`）を根拠にチェック。Phase 3 は実 `make eval`（31問・実API）の結果で `docs/eval_report.md` を完成しチェック。Phase 4/5 はスクショ・GIF以外の項目をチェック（撮影・録画はブラウザ操作ツールが無く人手作業として `docs/assets/README.md` へ引き継ぎ）。Phase 8 は代理計測（真のクリーンルームではない）でチェック。ライブラン中に発見した実バグ2件（`retrieval/searcher.py` のSQL bind paramバグ、Voyage `max_retries`未設定バグ）とLangfuse鍵の401問題を関連文書に反映 |
-| v0.1 | 2026-07-08 | 初版。m5_release_readiness.md v0.2 §15 の実装順序に基づき Phase 0〜9 を作成。Phase 0 に **M0〜M4 クローズの入口ゲート**、Phase 1 の監査は **実装優先の是正方向**、Phase 3 の Eval レポート数値は **M3 サマリ引用**（差し込み機構を新設しない）を反映。判断索引（§1）・文書一致監査・15 分再現性クローズを各フェーズ化 |
+| v0.1 | 2026-07-08 | 初版。docs/specs/26070922-m5_release_readiness/spec.md v0.2 §15 の実装順序に基づき Phase 0〜9 を作成。Phase 0 に **M0〜M4 クローズの入口ゲート**、Phase 1 の監査は **実装優先の是正方向**、Phase 3 の Eval レポート数値は **M3 サマリ引用**（差し込み機構を新設しない）を反映。判断索引（§1）・文書一致監査・15 分再現性クローズを各フェーズ化 |

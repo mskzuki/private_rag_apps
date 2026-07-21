@@ -1,6 +1,6 @@
 # M9 タスクリスト: Google Drive フォルダ取り込み (v0.2)
 
-- Spec: `m9_google_drive_ingestion.md`（v0.4）
+- Spec: `docs/specs/26071710-m9_google_drive_ingestion/spec.md`（v0.4）
 - Status: Completed（T0-T8 完了。手動スモークテスト（実GCPサービスアカウント + 実Driveフォルダでの動作確認）のみユーザー環境依存のため持ち越し。詳細はT8タスクノート参照）
 - 実行順序: T0 → T1 → T2 → T3 → T4 → T5 → T6 → T7 → T8
 - 規約: 各タスクは「完了条件をすべて満たす」まで次に進まない。スコープ外の変更を行わない。判断に迷う点はタスク内の「実装ノート」の範囲でのみ裁量を認め、それ以外はスペックに差し戻す
@@ -254,7 +254,7 @@
 - [x] `make lint`/`make test` が通過する → **達成**（`make lint`: backend ruff/mypy clean（88 source files）、frontend biome lint/format 通過（既存 shadcn 生成ファイル2件の`useImportType`警告のみ・M9 とは無関係・エラーではなく警告でexit 0）。`make test`: `DATABASE_URL` を `rag_test` に固定した状態で207件全通過、0 failed）
 - [x] README の手順が完結している（追加のGCPアカウント作成以外に読者が迷う箇所がない） → **達成**（T2で追加された設定手順(A)に加え、本タスクで(B)取り込みコマンド（`make ingest-gdrive`／`docker compose up`+`make worker`+`POST /api/ingest/gdrive`）と(C)動作確認（`GET /api/ingest/runs`・citationリンクの実クリック確認）を追記済み（コミット`fe92a7b`）。`backend/.env.example`のDrive設定セクション（5キー）ともREADMEの説明が一致することを確認した）
 - [x] `architecture.md`/`db_design.md` が更新されている → **達成**（§1構成図・§2モジュール表・§6取り込み設計・§7 API設計・§8可観測性・§9設定を`architecture.md`へ、§3 ER図・§4 DDL・§5インデックス・§7増分再取り込みを`db_design.md`へ反映。両ファイルとも変更履歴に本タスクのエントリを追加）
-- [x] 手動スモークテストを実施したか、実施できない場合はその理由と持ち越しである旨がタスクノートに記録されている → **達成**（下記タスクノート参照。実GCPサービスアカウント・実Driveフォルダがこのエージェント実行環境に存在しないため実施不可。再現手順を明記の上、持ち越しとして記録した。M7 T3のVoyage/OpenAIレート制限ブロッカー（`docs/adr/0003_m7_t3_eval_baseline_gap.md`）と同じ「環境依存の制約は正直に明記し、代替措置は取らない」方針を踏襲）
+- [x] 手動スモークテストを実施したか、実施できない場合はその理由と持ち越しである旨がタスクノートに記録されている → **達成**（下記タスクノート参照。実GCPサービスアカウント・実Driveフォルダがこのエージェント実行環境に存在しないため実施不可。再現手順を明記の上、持ち越しとして記録した。M7 T3のVoyage/OpenAIレート制限ブロッカー（`docs/specs/26071422-m7_adaptive_routing/tasklist.md` T3）と同じ「環境依存の制約は正直に明記し、代替措置は取らない」方針を踏襲）
 - [x] `docs/decisions.md` の M9 関連3件の決定（サービスアカウント認証・identity key一般化・ARQ限定利用）が実装と齟齬がないことを確認 → **達成**（齟齬なし。詳細は下記タスクノート参照。編集は不要だった）
 
 **タスクノート（2026-07-17 記録）:**

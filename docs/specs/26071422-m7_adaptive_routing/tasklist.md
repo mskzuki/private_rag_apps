@@ -1,6 +1,6 @@
 # M7 タスクリスト: Adaptive Routing (rev.3)
 
-- Spec: `m7_adaptive_routing.md` (rev.4)
+- Spec: `docs/specs/26071422-m7_adaptive_routing/spec.md` (rev.4)
 - Status: Completed（T0-T7 完了。ADR 0004/0005 により完了条件を実績に合わせて確定。詳細は本ファイル末尾「全体の完了定義」参照）
 - 実行順序: T0 → T1 → T2 →（GO/NO-GO 判定）→ T3 → T4 → T5 → T6 → T7
 - 規約: 各タスクは「完了条件をすべて満たす」まで次に進まない。スコープ外の変更を行わない。判断に迷う点はタスク内の「実装ノート」の範囲でのみ裁量を認め、それ以外はスペックに差し戻す
@@ -117,13 +117,13 @@
 
 **完了条件:**
 - [x] 既存の全テストが通過（リグレッションゼロ）→ **達成**（84件全通過、ruff/mypy clean）
-- [x] ~~`make eval` が T0 で記録したベースラインと同等スコア（generation 品質の非劣化）~~ → **`make eval`自体はアカウント側ブロッカーで実行不能（T0で確認済み）。コードレビューによる非劣化の代替論証（generation/retrieval/promptsの差分ゼロ）で受入。ユーザー承認済み。詳細: `docs/adr/0003_m7_t3_eval_baseline_gap.md`**
+- [x] ~~`make eval` が T0 で記録したベースラインと同等スコア（generation 品質の非劣化）~~ → **`make eval`自体はアカウント側ブロッカーで実行不能（T0で確認済み）。コードレビューによる非劣化の代替論証（generation/retrieval/promptsの差分ゼロ）で受入。ユーザー承認済み。**
 - [x] stub 構造検証テストが通過し、CI に組み込まれている → **達成**（`test_chat_sse_structure.py`）
 - [x] 実機検証の結果（TTFT 目視比較含む）がタスクノートに記録されている → **達成**（host uvicorn + curl/httpxによるSSEイベント順序・スキーマ・TTFT・複数ターンの手動確認）
 - [x] 未知イベント型に対するフロントの無視動作を確認済み → **達成**（T3時点でコードレビューにより確認。実際の無視動作の自動テストはT6で追加）
 - [x] ~~langchain 系パッケージが依存ツリーに入っていないこと（`pip list` で確認）~~ → **直接依存は`langgraph`単体のみ（`pyproject.toml`にlangchain/langchain-anthropicは追加していない）。ただし`langgraph`自体が`langchain-core`/`langchain-protocol`/`langchain-text-splitters`を推移依存として引き込む（`uv pip list`で確認、langgraph 1.2.9のRunnable/Pregel基盤の設計による）。これはLLM抽象化・エージェント機能の混入ではなく構造的な軽量ライブラリの推移依存であり、本スペックが禁止する「langchainのLLM抽象化・エージェント機能への依存」には該当しないため許容する（whole-branchレビューで指摘、コーディネーターが表記を訂正）**
 
-**T3実装ノート:** retrieval失敗時のエラーサーフェス変化（HTTP 500 → SSE `error`イベント）を許容。ダッシュボード等での監視方法変更が必要な場合はM8以降で検討。詳細: `docs/adr/0002_m7_retrieve_error_surface.md`。実装完了コミット `755baac`、レビューApproved（0 Critical/Important、Minor 2件は将来対応として保留）。
+**T3実装ノート:** retrieval失敗時のエラーサーフェス変化（HTTP 500 → SSE `error`イベント）を許容。判断理由: `error`イベントはgenerate失敗時に既存だったチャンネルであり、retrieve失敗もそこに統一する方が一貫性が高い。本プロジェクトの可観測性はLangfuseトレース中心でHTTPステータスコードでの監視には依存しないため実害は小さいと判断した。ダッシュボード等での監視方法変更が必要な場合はM8以降で検討。実装完了コミット `755baac`、レビューApproved（0 Critical/Important、Minor 2件は将来対応として保留）。
 
 **スコープ外:** grade / rewrite / 経路分岐 / 新規 SSE イベント。プロンプト変更一切（`make eval` 対象変更を発生させない）。
 
@@ -153,11 +153,11 @@
 7. 補足書式検証: e2e eval の複合質問 5 件で、context 外の内容が補足セクションに分離されていることを判定
 
 **完了条件:**
-- [x] ~~`make eval-routing`（holdout）: grounded 見逃し ≤ 1 件、direct 誤り ≤ 3 件（T2 の GO 判定の再現）~~ → **NO-GO**（grounded見逃し0/21・direct誤り4/18で基準を1件超過。calibrationのみでの正規の再キャリブレーションでもTHETA=0.56が最適と再確認、holdout結果は再現。**未解決事項:** direct誤り4件は全件Voyage rerank失敗によるフォールバック起因の可能性が高いとT4レビューで独立検証されたが、22件の再取得は実施していない（コスト対効果を理由にユーザー判断で見送り）。ユーザー承認によりNO-GOを受け入れ、スペック§7.4に従いLLM graderスペックを別途起票する。詳細: `docs/adr/0001_m7_theta_threshold.md`追記部分, `docs/adr/0005_m7_no_go_accepted.md`） → **2026-07-17追記: GOへ反転。** ユーザー指示によりdirect誤り4件を含むholdout未検証None件をVoyage APIに再取得した結果、`g014`/`g037`は推定通りVoyage失敗による誤判定と判明し訂正、`a019`/`a028`は実スコア取得の上で正当なグレーゾーン誤判定と判明。holdout direct誤りは4/18→2/18（基準≤3）に減少し**GO**。詳細: `docs/adr/0006_m7_holdout_partial_reretry_go.md`（ADR 0005はSuperseded）
+- [x] ~~`make eval-routing`（holdout）: grounded 見逃し ≤ 1 件、direct 誤り ≤ 3 件（T2 の GO 判定の再現）~~ → **NO-GO**（grounded見逃し0/21・direct誤り4/18で基準を1件超過。calibrationのみでの正規の再キャリブレーションでもTHETA=0.56が最適と再確認、holdout結果は再現。**未解決事項:** direct誤り4件は全件Voyage rerank失敗によるフォールバック起因の可能性が高いとT4レビューで独立検証されたが、22件の再取得は実施していない（コスト対効果を理由にユーザー判断で見送り）。ユーザー承認によりNO-GOを受け入れ、スペック§7.4に従いLLM graderスペックを別途起票する） → **2026-07-17追記: GOへ反転。** ユーザー指示によりdirect誤り4件を含むholdout未検証None件をVoyage APIに再取得した結果、`g014`/`g037`は推定通りVoyage失敗による誤判定と判明し訂正、`a019`/`a028`は実スコア取得の上で正当なグレーゾーン誤判定と判明。holdout direct誤りは4/18→2/18（基準≤3）に減少し**GO**（旧NO-GO判定は本行の再取得結果により更新済み）
 - [x] direct groundedness: 人手裁定後の真の違反 0
 - [x] ~~補足書式: 複合質問 5/5 で分離が確認できる（判定結果の人手確認込み）~~ → **3/5に留まる**（プロンプト調整を1回試行したが悪化したため撤回。既知の制約として記録し、構造化出力化をM7追補スペックとして提案。タスクリスト実装ノート通りの扱い）
 - [x] 2 経路 + 補足発生ケースの手動スモークテスト（grounded 2 件 / direct 2 件 / 複合 1 件、SSE 経由）
-- [x] ~~`make eval`（既存 e2e）が T0 ベースライン非劣化~~ **対象外（`docs/adr/0004_m7_make_eval_excluded.md`。ユーザー指示によりM7の完了条件から除外）**
+- [x] ~~`make eval`（既存 e2e）が T0 ベースライン非劣化~~ **対象外（Voyage/OpenAI無支払い枠のレート制限により完走できないため、ユーザー指示によりM7の完了条件から除外）**
 - [x] AGENTS.md 更新済み
 
 **スコープ外:** rewrite の実装（T5）。SSE 新イベント（T6）。THETA の再チューニング（T2 の値を使う。満たせない場合は T2 に差し戻し、holdout 再使用の記録規約に従う）。
@@ -212,7 +212,7 @@
 **完了条件:**
 - [x] 既存イベント型のペイロードに変更がないこと（stub 構造検証テストで担保） → `backend/tests/test_chat_sse_structure.py::test_chat_sse_event_sequence_and_schema_match_pre_graph_capture` で citations/token/done の JSON スキーマが不変であることを確認。`api/main.py` の event_generator は node_start/route_decided/rewrite_result を素通しするだけの追加elifで、既存の token/citations/error 分岐は無変更
 - [x] 2 経路それぞれでバッジが正しく表示される → バックエンド: `backend/tests/test_graph_builder.py`（grounded/direct 双方の event 系列に route_decided を含めて検証）と `backend/tests/test_graph_nodes.py::TestGrade`（route_decided payload の kept/dropped/top_score を grounded/direct 双方で検証）。フロント: `frontend/src/lib/chat-adapter.test.ts` に `route_decided{route:"grounded"}`→`metadata.custom.route==="grounded"`、`route_decided{route:"direct", top_score:null}`→`metadata.custom.route==="direct"` の2テストを追加。`RouteBadge.tsx` は `metadata.custom.route` の値で2状態（コーパス根拠あり/一般知識のみ）を出し分け
-- [x] SSE プロトコルドキュメント更新済み → `docs/specs/m2_streaming_and_history.md` v0.3（§4.1 に「SSE イベント仕様への M7 追加分（後方互換）」を追記、変更履歴に記載）
+- [x] SSE プロトコルドキュメント更新済み → `docs/specs/26070718-m2_streaming_and_history/spec.md` v0.3（§4.1 に「SSE イベント仕様への M7 追加分（後方互換）」を追記、変更履歴に記載）
 
 **スコープ外:** 進捗のリッチ UI（スピナー・ノード別ステータス表示）→ M5 showcase の範疇。補足セクション有無のバッジ表示（route ではないため。必要なら M5 で検討）。
 
@@ -231,8 +231,8 @@
 **完了条件:**
 - [x] Langfuse 上で route 別のフィルタリング・レイテンシ比較ができることを確認 → `route`, `theta`, `kept_count`, `top_score`（grade ノード）・`rewrite_applied`（rewrite ノード）を `propagate_attributes(metadata={...})` で trace レベル metadata として記録するよう実装（`backend/src/private_rag_apps/graph/nodes/grade.py`, `.../rewrite.py`）。この worktree の `backend/.env` には有効な Langfuse 認証情報が設定されていない（プレースホルダーのまま）ため、Langfuse UI 上での実フィルタリング・レイテンシ比較の実地確認は未実施。単体テストで metadata の呼び出し引数を検証済み（`backend/tests/test_graph_nodes.py`）
 - [x] direct 経路の trace がダッシュボードで欠損扱いにならないことを確認 → グラフの配線（`backend/src/private_rag_apps/graph/builder.py`）上、`retrieve`/`grade` は grounded/direct いずれの経路でも必ず実行され、両経路とも同じ `generate` ノードに合流するため構造的に欠落しない。この構造上の保証をコードレビューで確認済み。実 Langfuse UI 上での目視確認は上記と同じ理由（認証情報未設定）で未実施
-- [x] スペックの Status が Accepted に更新され、§10 が解消または明示的に持ち越し記録されている → `docs/specs/m7_adaptive_routing.md` rev.4 で Status を Accepted に更新し、§10 の未決事項3件（N=5 のまま不変・レイテンシ超過はM8持ち越し／補足書式の最終文言／judgeのモデル・プロンプト所在）をすべて解消・記録した
-- [x] `make eval-routing` 全通過の最終確認（`make eval`はADR 0004により対象外） → **文言を実績と整合させて修正（本タスクの成果物）。** 正しくは「`make eval-routing` が実行可能であることの最終確認」。`make eval`はADR 0004により対象外。`make eval-routing`自体の合否基準（holdout: grounded見逃し≤1件・direct誤り≤3件）はT4で**NO-GO**（grounded見逃し0/21・direct誤り4/18）となり、ADR 0005によりユーザーがこのNO-GOを受理済みのため、再合格を待たない。`--stats-only`（Voyage/OpenAI呼び出し無し、既存結果の再集計のみ）で実行可能性を再確認し、ADR 0005記載の数値（holdout: grounded_miss=0/21, direct_wrong=4/18, id=[g014, g037, a019, a028]）と完全一致することを確認した → **2026-07-17追記: その後ユーザー指示により該当4件+他のholdout未検証None件を再取得し、holdout direct誤り4/18→2/18で正式にGOへ反転した（詳細: `docs/adr/0006_m7_holdout_partial_reretry_go.md`）。「再合格を待たない」という本行の前提はもはや適用対象ではないが、修正当時の判断記録として保持する**
+- [x] スペックの Status が Accepted に更新され、§10 が解消または明示的に持ち越し記録されている → `docs/specs/26071422-m7_adaptive_routing/spec.md` rev.4 で Status を Accepted に更新し、§10 の未決事項3件（N=5 のまま不変・レイテンシ超過はM8持ち越し／補足書式の最終文言／judgeのモデル・プロンプト所在）をすべて解消・記録した
+- [x] `make eval-routing` 全通過の最終確認（`make eval`はADR 0004により対象外） → **文言を実績と整合させて修正（本タスクの成果物）。** 正しくは「`make eval-routing` が実行可能であることの最終確認」。`make eval`はADR 0004により対象外。`make eval-routing`自体の合否基準（holdout: grounded見逃し≤1件・direct誤り≤3件）はT4で**NO-GO**（grounded見逃し0/21・direct誤り4/18）となり、ADR 0005によりユーザーがこのNO-GOを受理済みのため、再合格を待たない。`--stats-only`（Voyage/OpenAI呼び出し無し、既存結果の再集計のみ）で実行可能性を再確認し、ADR 0005記載の数値（holdout: grounded_miss=0/21, direct_wrong=4/18, id=[g014, g037, a019, a028]）と完全一致することを確認した → **2026-07-17追記: その後ユーザー指示により該当4件+他のholdout未検証None件を再取得し、holdout direct誤り4/18→2/18で正式にGOへ反転した。「再合格を待たない」という本行の前提はもはや適用対象ではないが、修正当時の判断記録として保持する**
 
 ---
 
@@ -241,7 +241,7 @@
 - [x] T0–T7 の全完了条件を満たす（補足書式3/5はADR 0004・タスクリスト実装ノート通り既知の制約として受理済み。direct誤りはT4時点でNO-GOだったが2026-07-17の再取得でGOへ反転（下記）。他は達成）
 - [x] `make eval-routing` が実行可能であること。**合否実績は以下の通り**（文言修正: 本タスクの成果物。旧文言「`make eval-routing` 通過（… ）」はT2完了時点の楽観的な記述であり、T4/T5で判明した事実と矛盾していたため修正した）:
   - grounded 見逃し: 0/21（基準 ≤ 1 件を達成）
-  - direct 誤り: **2/18**（基準 ≤ 3 件を達成。**GO**。T4時点では4/18でNO-GOだったが、2026-07-17にユーザー指示で該当4件を含むholdout未検証None件をVoyage APIに再取得した結果、`g014`/`g037`は誤判定と判明し訂正、`a019`(0.707)/`a028`(0.574)は実スコア取得の上で正当なグレーゾーン誤判定と判明。詳細: `docs/adr/0006_m7_holdout_partial_reretry_go.md`。ADR 0005はSuperseded）
+  - direct 誤り: **2/18**（基準 ≤ 3 件を達成。**GO**。T4時点では4/18でNO-GOだったが、2026-07-17にユーザー指示で該当4件を含むholdout未検証None件をVoyage APIに再取得した結果、`g014`/`g037`は誤判定と判明し訂正、`a019`(0.707)/`a028`(0.574)は実スコア取得の上で正当なグレーゾーン誤判定と判明）
   - direct groundedness: 人手裁定後の真の違反 0（達成）
   - 補足書式: 3/5（**未達**。既知の制約として受理。構造化出力化をM7追補スペックとして提案）
   - 既存 e2e（`make eval`）非劣化は ADR 0004 により M7 の完了条件から除外（対象外）
