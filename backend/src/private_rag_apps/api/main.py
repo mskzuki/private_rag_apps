@@ -216,6 +216,7 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
 
         except Exception as e:
             has_error = True
+            print(f"Chat stream error (conversation_id={conversation_id}): {e}")
             yield {"event": "error", "data": json.dumps(str(e), ensure_ascii=False)}
 
         if not has_error:
@@ -244,6 +245,7 @@ async def chat(request: Request, body: ChatRequest, db: Session = Depends(get_db
             except Exception as e:
                 db.rollback()
                 has_error = True
+                print(f"Chat message save error (conversation_id={conversation_id}): {e}")
                 yield {"event": "error", "data": json.dumps(f"DB save error: {e}", ensure_ascii=False)}
 
         if not has_error:

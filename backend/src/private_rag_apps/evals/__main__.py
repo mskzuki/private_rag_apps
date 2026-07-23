@@ -59,12 +59,9 @@ def get_corpus_hash() -> str:
 
 
 def get_answer(query: str, context: List[Dict[str, Any]]) -> str:
-    # generator.py がtemp/max_tokensの上書きに対応していればここで上書きできるが、現状は1024固定・デフォルトtempがハードコードされている。
-    # generator.py がeval用の設定を使うべきか、M3が言う「fixed max_tokens」の通り現状のまま使うべきかは未確定。
-    # generator.py を変更しない限りtempを簡単に上書きできないので、ひとまずこのまま実行する（M3スペックではEVAL_GEN_TEMPERATURE=0とされている点に注意）。
-    # 可能であればkwargsとして渡したいが、現状generatorはkwargsを受け付けない。
-    # M3に厳密に従うにはgenerator.pyにパッチを当てるか、現状の実装をそのまま使うしかない。
-    # 今のところはストリームされたトークンを収集するだけにする。
+    # generate_answer_stream()はtemperature/max_tokens引数を受け付けないため、
+    # settings.eval_gen_temperature/eval_gen_max_tokensは未使用のまま、本番と同じ
+    # 固定値(temperatureデフォルト・max_tokens=1024)で生成する。
     stream = generate_answer_stream(query, context)
     full_text = ""
     for event in stream:

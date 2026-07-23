@@ -211,7 +211,7 @@ def _rerank(
             get_client().update_current_generation(
                 usage_details={"input": rerank_result.total_tokens, "output": 0}, model="rerank-2.5"
             )
-        except (AttributeError, Exception):
+        except Exception:
             pass  # SDK version may not expose total_tokens or client may be disabled
 
         # rerank_score: Voyage rerank-2.5 の relevance_score (0〜1、降順) をそのまま格納する。
