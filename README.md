@@ -51,9 +51,9 @@
    - 名前は任意（例: `private-rag-apps-gdrive`）。プロジェクトへのロール付与は不要（Drive フォルダ側の共有だけでアクセスできる）
 3. **JSON キーを作成しダウンロードする**
    - 作成したサービスアカウントの詳細画面 →「鍵」タブ →「鍵を追加」→「新しい鍵を作成」→ 形式は JSON を選択
-   - ダウンロードした JSON ファイルは**リポジトリにコミットしない**。`.gitignore` 対象の任意のローカルパス（例: `backend/secrets/gdrive-service-account.json`）に保存する
+   - ダウンロードした JSON ファイルは**リポジトリにコミットしない**。`.gitignore` 対象のローカルパスに保存する。**`make worker`（後述）は docker コンテナとして起動するため、`backend/secrets/`（`docker-compose.yml` でコンテナにバインドマウント済み）配下に保存する必要がある**（例: `backend/secrets/gdrive-service-account.json`）
 4. **`backend/.env` に設定する**
-   - `DRIVE_SERVICE_ACCOUNT_FILE=` に手順3で保存した JSON ファイルの絶対パス（または `backend/` からの相対パス）を設定する
+   - `DRIVE_SERVICE_ACCOUNT_FILE=` に手順3で保存した JSON ファイルの `backend/` からの相対パス（例: `secrets/gdrive-service-account.json`）を設定する
    - `DRIVE_FOLDER_ID=` に取り込み対象フォルダの Drive ID を設定する（フォルダを Google Drive で開いたときの URL 末尾の ID 部分。例: `https://drive.google.com/drive/folders/1AbCDefGhIJKlmnOPQrstuVWxyz` なら `1AbCDefGhIJKlmnOPQrstuVWxyz`）
 5. **対象フォルダをサービスアカウントに共有する**
    - Google Drive で対象フォルダを開く → 右クリック（またはフォルダ名の横のメニュー）→「共有」
@@ -76,7 +76,7 @@ make ingest-gdrive
 こちらは Drive 取り込みに限り ARQ/Redis を使う経路です（`docs/specs/26071710-m9_google_drive_ingestion/spec.md` §3.3 参照。ローカル取り込みの API 経由トリガは引き続き `BackgroundTasks` のままで変更ありません）。
 
 1. `docker compose up`（`db`/`api` に加えて `redis` サービスも起動します）
-2. 別ターミナルで `make worker`（ARQ worker をホスト上で直接起動。`make web` と同じくコンテナ化しません）
+2. 別ターミナルで `make worker`（ARQ worker を `api` と同じく docker コンテナとして起動）
 3. `POST http://localhost:8000/api/ingest/gdrive` を呼ぶ（`POST /api/ingest` と同じ UX で、即座に `ingest_run` の id を返し、実処理は worker がバックグラウンドで実行します）
 
 **動作確認**

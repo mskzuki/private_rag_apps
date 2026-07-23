@@ -6,10 +6,10 @@ api:
 web:
 	cd frontend && pnpm dev
 
-# API経由トリガ（POST /api/ingest/gdrive）のARQジョブを処理するworkerをホスト上で直接起動する。
-# 専用dockerイメージは作らない（m9_google_drive_ingestion.md §4.8。CLI経由取り込みはこのworkerに依存しない）
+# API経由トリガ（POST /api/ingest/gdrive）のARQジョブを処理するworkerをapiと同じくコンテナで起動する
+# （m9_google_drive_ingestion.md §4.8 v0.5。CLI経由取り込みはこのworkerに依存しない）
 worker:
-	cd backend && uv run arq private_rag_apps.worker.settings.WorkerSettings
+	docker compose up --build ingest_worker
 
 # 初期セットアップ: uv sync + pnpm install + .env生成 + DB起動（AGENTS.md §4/§5）
 setup:

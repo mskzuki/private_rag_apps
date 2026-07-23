@@ -247,6 +247,19 @@ class TestGrade:
         assert [c["chunk_id"] for c in result["kept"]] == ["a"]
         assert result["route"] == "grounded"
 
+    def test_callable_outside_langgraph_runnable_context(self) -> None:
+        """回帰テスト(docs/specs/26071715-m8_clarify_route/spec.md §6.3、tasklist T0):
+        evals/routing.py::retrieve_and_grade() は grade() を LangGraph の実行コンテキスト外
+        (graph.astream()を経由しない直接呼び出し)から呼ぶ設計であり、get_stream_writer()を
+        意図的にpatchしない。修正前はここで RuntimeError("Called get_config outside of a
+        runnable context") が送出されていた"""
+        state: GraphState = {"retrieved": [{"chunk_id": "a", "rerank_score": 0.9}]}
+
+        result = grade(state)
+
+        assert result["route"] == "grounded"
+        assert result["kept"] == [{"chunk_id": "a", "rerank_score": 0.9}]
+
     @patch("private_rag_apps.graph.nodes.grade.propagate_attributes")
     @patch("private_rag_apps.graph.nodes.grade.get_client")
     @patch("private_rag_apps.graph.nodes.grade.get_stream_writer")

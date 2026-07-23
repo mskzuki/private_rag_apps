@@ -50,7 +50,7 @@ flowchart LR
 
 - **api**: チャット（検索＋生成）、会話管理、ソース一覧・再取り込みトリガ（ローカル取り込みは引き続き `BackgroundTasks`。Drive 取り込みの API 経由トリガ `POST /api/ingest/gdrive` のみ ARQ へ enqueue する。M9）
 - **cli**: コーパス取り込み（`make ingest` / `make demo` / `make ingest-gdrive`）。api と同一コードベース（`ingestion` モジュール）を CLI エントリポイントから呼ぶ。`make ingest-gdrive` は他の CLI コマンドと同じく呼び出しプロセス内で同期実行し、Redis/worker には依存しない（M9）
-- **worker**（M9 新設）: ARQ ワーカープロセス。`POST /api/ingest/gdrive` が enqueue したジョブのみを処理する薄い層（`ingestion.execute_gdrive_ingestion()` を呼ぶのみ。AGENTS.md §3）。`make worker` でホスト上に直接起動する（`make web` と同じパターン。専用 docker イメージは持たない）
+- **worker**（M9 新設）: ARQ ワーカープロセス。`POST /api/ingest/gdrive` が enqueue したジョブのみを処理する薄い層（`ingestion.execute_gdrive_ingestion()` を呼ぶのみ。AGENTS.md §3）。`make worker` で `api` と同じくコンテナとして起動する（`backend/docker/ingest_worker/Dockerfile.local`。compose上のサービス名は `ingest_worker`。docs/specs/26071710-m9_google_drive_ingestion/spec.md §4.8 v0.6）
 - **pg**: リレーショナル + ベクトル + 全文を単一 DB で
 - **redis**（M9 新設）: `docker-compose.yml` の `redis` サービス。**Drive 取り込みの API 経由トリガの堅牢化（FastAPI プロセス再起動をまたいだ再試行）にのみ**使う。ローカル取り込み（CLI/API/BackgroundTasks）には一切関与しない
 - Redis / ジョブキューは、ローカル取り込みの範囲では持たない（v0.2 で SaaS 同期がスコープ外になったため）。**M9 で Google Drive 取り込みの API 経由トリガに限定した例外として ARQ/Redis を導入した**（AGENTS.md §2、`docs/specs/26071710-m9_google_drive_ingestion/spec.md` §3.3）。将来 SaaS コネクタを本格導入する際は改めて再検討する

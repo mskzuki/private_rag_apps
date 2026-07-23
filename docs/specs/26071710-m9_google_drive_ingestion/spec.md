@@ -13,6 +13,8 @@
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.6 | 2026-07-22 | §4.8 改訂: `docker-compose.yml`/Dockerfile 上の worker サービス名を `worker` → `ingest_worker` に変更（`docker-compose.yml` 単体で読んだ際に何を処理するサービスか分かりにくいというユーザーフィードバックを受けた命名変更）。`make worker`（Makefile ターゲット名）・`private_rag_apps.worker`（Python パッケージ名）は既存ドキュメント全体で確立済みのため変更しない。`backend/docker/ingest_worker/Dockerfile.local` に配置変更 |
+| v0.5 | 2026-07-21 | §4.8 改訂: ARQ worker の起動方式を「ホスト上の直接プロセス起動（専用 docker イメージなし）」から「`docker compose up --build worker`（`api` と同じコンテナ起動）」に変更。ユーザーからの明示指示（バックエンドは docker 経由で起動する）を受けた方針転換。経緯は `docs/decisions.md` 参照。`backend/docker/worker/Dockerfile.local` を新設し、`docker-compose.yml` に `worker` サービスを追加 |
 | v0.4 | 2026-07-17 | T8（テスト・ドキュメント最終反映・動作確認）完了に伴い Status を Draft → Accepted に変更。M9 全体（T0-T8）が完了し、`architecture.md`/`db_design.md`/README への実装反映、`decisions.md` の M9 関連3決定の実装照合（齟齬なし）、`make lint`/`make test` の通過を確認済み。実GCPサービスアカウント + 実Driveフォルダでの手動スモークテストのみユーザー環境依存のため持ち越し（再現手順は `docs/specs/26071710-m9_google_drive_ingestion/tasklist.md` T8タスクノート参照。M7 T3の Voyage/OpenAI レート制限ブロッカーと同様、環境依存の制約として明示的に記録） |
 | v0.3 | 2026-07-17 | T7（エラー処理・観測性）実装反映: (1) §5 に `DRIVE_API_MAX_RETRIES`（既定5）を追加。Drive API の 429/5xx 対策は手製バックオフループではなく `google-api-python-client` 組み込みの `num_retries` に委譲する方針を明記 (2) §6 の ARQ ジョブ trace 名を、当初案の `ingest_run` 統一から実装済みの `ingest_run_gdrive`（T4 由来）へ確定。理由（Langfuse UI上でのトレース名によるローカル/Drive即時判別を優先）を追記し、実装と仕様の食い違いを解消 |
 | v0.2 | 2026-07-17 | レビュー反映: (1) ARQ worker プロセスの起動方法が未規定だった問題を修正。§1/§4.8 に `make worker`（ローカルプロセス起動、`make web` と同じパターン）を追加 (2) 新設パッケージ `worker/` が AGENTS.md §3 の依存方向ルールに反映されていなかった問題を修正。§9 に AGENTS.md §3 への `worker/` 追加を記載（実ファイルは同時に改訂済み） |
@@ -224,9 +226,9 @@ CREATE UNIQUE INDEX sources_external_id_unique_gdrive
 | CLI | `make ingest-gdrive` → `cli.main ingest-gdrive --trigger cli` | 同期実行（既存ローカル ingest と同じ） |
 | API | `POST /api/ingest/gdrive` | `ingest_runs` の `running` 行を同期作成 → ARQ へ enqueue |
 | API（進捗確認） | `GET /api/ingest/runs`（既存を再利用） | ソース種別に関わらず一覧表示 |
-| Worker | `make worker` → `cd backend && uv run arq private_rag_apps.worker.settings.WorkerSettings` | ローカルプロセスとして起動（`make web` と同じパターン。専用の docker イメージは作らない） |
+| Worker | `make worker` → `docker compose up --build ingest_worker` | `api` と同じくコンテナとして起動（`backend/docker/ingest_worker/Dockerfile.local`。compose上のサービス名は `ingest_worker`。Makefileターゲット名 `make worker` とは別の命名） |
 
-`make ingest-gdrive`（CLI経由）は呼び出しプロセス内で完結するため、**Redis・`make worker` の起動は不要**。Redis/worker は `POST /api/ingest/gdrive`（API経由）を使う場合にのみ必要になる。`make worker` は `api`（`docker compose up --build api`）とは異なり、`web`（`cd frontend && pnpm dev`）と同様にホスト上で直接プロセスを起動する方式とする（ARQ worker は Redis/DB/外部APIへの接続のみが必要でコンテナ化の恩恵が小さいこと、`docker-compose.yml` に専用サービスを追加する保守コストを避けることを理由に、ローカル起動をデフォルトとする）。`docker-compose.yml` には Redis サービスのみ追加し、worker 用サービスは追加しない。
+`make ingest-gdrive`（CLI経由）は呼び出しプロセス内で完結するため、**Redis・`make worker` の起動は不要**。Redis/worker は `POST /api/ingest/gdrive`（API経由）を使う場合にのみ必要になる。`make worker` は `api`（`docker compose up --build api`）と同じパターンでコンテナ起動する（v0.4 までは `web` と同様にホスト上で直接起動する方式としていたが、バックエンドの起動方式を docker 経由に統一するというユーザー指示を受け v0.5 で変更。経緯は `docs/decisions.md` 参照）。`docker-compose.yml` に `worker` サービスを追加する。`DRIVE_SERVICE_ACCOUNT_FILE` はコンテナにバインドマウントする `backend/secrets/` 配下の相対パスを指定する必要がある（README 参照）。
 
 既存 `AGENTS.md` の `make ingest CORPUS=path/` はドキュメント上の記載のみで実際には Makefile 変数として配線されていない（`CORPUS_DIR` は `.env` 経由）。M9 の新規ターゲットはこの不整合を踏襲せず、`DRIVE_FOLDER_ID` は `.env` 経由の設定のみとし、Makefile 変数展開には依存しない設計とする。
 

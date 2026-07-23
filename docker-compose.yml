@@ -17,7 +17,7 @@ services:
 
   # M9: API経由トリガのDrive取り込みジョブ（POST /api/ingest/gdrive）をARQ経由で処理するために使う。
   # Drive機能を使わない場合でも起動して問題ない（他サービスから未接続でも単体で正常起動する）。
-  # `make worker`はホスト上で直接起動するため、host側から到達できるよう db と同様にportを公開する
+  # ポート公開はhostからのデバッグ用（redis-cli等）。api/ingest_workerコンテナはcompose内部ネットワーク経由でredisサービス名で到達する
   # （AGENTS.md §2のジョブキュー導入禁止に対するM9限定の例外。§3.3参照）
   redis:
     image: redis:7-alpine
@@ -35,12 +35,31 @@ services:
     environment:
       - DATABASE_URL=postgresql+psycopg://rag_user:rag_pass@db:5432/rag_dev
       # apiコンテナはcompose内部ネットワーク経由でredisサービス名で到達する。
-      # REDIS_URLの既定値(redis://localhost:6379/0)はホスト上で直接動くmake worker用であり、
+      # REDIS_URLの既定値(redis://localhost:6379/0)はコンテナ外(ホストでの単体実行)用であり、
       # コンテナ内からのlocalhostはapiコンテナ自身を指してしまうため上書きが必須（dbと同じパターン）
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./seed:/app/seed
       - ./backend/src:/app/src
+    depends_on:
+      - db
+      - redis
+
+  # M9: `POST /api/ingest/gdrive` がenqueueしたGoogle Drive取り込みジョブを処理するARQ worker。
+  # apiと同じくコンテナ起動（docs/specs/26071710-m9_google_drive_ingestion/spec.md §4.8 v0.6）
+  ingest_worker:
+    build:
+      context: ./backend
+      dockerfile: docker/ingest_worker/Dockerfile.local
+    env_file:
+      - backend/.env
+    environment:
+      - DATABASE_URL=postgresql+psycopg://rag_user:rag_pass@db:5432/rag_dev
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./backend/src:/app/src
+      # DRIVE_SERVICE_ACCOUNT_FILEはこのディレクトリ配下の相対パスを指定する（README参照）
+      - ./backend/secrets:/app/secrets
     depends_on:
       - db
       - redis

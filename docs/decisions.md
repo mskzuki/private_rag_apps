@@ -161,12 +161,22 @@
 - **根拠**: 外部 API 呼び出し（Drive API）を伴う処理はローカル FS 読み込みと異なり、ネットワーク起因の失敗・長時間化の可能性があり、プロセス再起動への耐性の価値が高い。一方 CLI 経由トリガはコマンド実行プロセス自体が寿命であり、BackgroundTasks 由来の弱点（API プロセス再起動でタスクが失われる）が元々当てはまらないため、変更する理由がない。
 - **詳細**: [docs/specs/26071710-m9_google_drive_ingestion/spec.md §3.3/§4.6](docs/specs/26071710-m9_google_drive_ingestion/spec.md#33-arq-は api-経由トリガの堅牢化のみに使う)
 
+### `make worker` のコンテナ起動化（ホスト直接起動からの方針転換）
+
+- **決定**: ARQ worker（`make worker`）を、ホスト上での直接プロセス起動から `docker compose up --build worker`（`api` と同じコンテナ起動）に変更する。`backend/docker/worker/Dockerfile.local` を新設。
+- **背景/代替案**: M9 初版（spec v0.2/v0.4）では「ARQ worker は Redis/DB/外部APIへの接続のみが必要でコンテナ化の恩恵が小さい」「`docker-compose.yml` に専用サービスを追加する保守コストを避ける」という理由から、`make web` と同様にホスト直接起動をデフォルトとしていた。
+- **根拠**: ユーザーから「バックエンドは docker を使わず直接起動している箇所を docker 経由に統一してほしい」と明示の指示があった。`make api` は既にコンテナ起動済みであり、`make worker` だけがホスト直接起動という非対称を解消することを優先し、当初の「コンテナ化の恩恵が小さい」という判断を上書きした。
+- **追記（2026-07-22）**: `docker-compose.yml`/Dockerfile 上のサービス名は `worker` ではなく `ingest_worker` とした（`docker-compose.yml` 単体で見た際に何を処理するサービスか分かりにくいというユーザーフィードバックを受けた命名変更。`backend/docker/ingest_worker/Dockerfile.local`）。`make worker`（Makefile ターゲット名）・`private_rag_apps.worker`（Python パッケージ名）は既存ドキュメント全体で確立済みの名称のため変更していない。
+- **詳細**: [docs/specs/26071710-m9_google_drive_ingestion/spec.md §4.8（v0.6）](docs/specs/26071710-m9_google_drive_ingestion/spec.md#48-cli--api-コマンド設計)
+
 ---
 
 ## 変更履歴
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.7 | 2026-07-22 | worker のコンテナ起動化決定に、compose上のサービス名を `ingest_worker` にした追記（Makefileターゲット名・Pythonパッケージ名とは別の命名判断）を追加 |
+| v0.6 | 2026-07-21 | `make worker` をホスト直接起動から docker コンテナ起動に変更した判断（当初のコンテナ化見送り判断の上書き）を追記 |
 | v0.5 | 2026-07-17 | M9（Google Drive フォルダ取り込み）スペック起票に伴い、サービスアカウント認証・identity key の一般化・ARQ/Redis を API 経由トリガに限定する判断を追記 |
 | v0.4 | 2026-07-14 | 開発DB/テストDB分離（rag_dev/rag_test）を実装反映。DB作成・`make test`のDATABASE_URL固定まで完了 |
 | v0.3 | 2026-07-14 | 開発DB/テストDB分離（rag_dev/rag_test）の決定を追記。M5・M6で計2回発生した、テスト実行がデモ用DBを誤って初期化する事故が背景 |

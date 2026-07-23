@@ -1,13 +1,13 @@
 # M7 eval-routing 結果
 
-THETA=0.56。収集済み149件、エラー1件。
+THETA=0.56。収集済み150件、エラー0件。
 
 ## calibration
 
 | 指標 | 実績 |
 |---|---|
-| grounded見逃し | 2/49 |
-| direct誤り | 11/41 |
+| grounded見逃し | 2/50 |
+| direct誤り | 8/41 |
 
 ## holdout（合否判定はこちら）
 
@@ -20,13 +20,13 @@ THETA=0.56。収集済み149件、エラー1件。
 
 routing.jsonl には relevant docs が無いため厳密なhit@kではなく、経路予測の正解率で代用している。
 
-比較対象20件中、rewrite有りで正解18件、
-rewrite無しで正解14件。rewriteにより悪化したid: ['f004', 'f017']
+比較対象20件中、rewrite有りで正解19件、
+rewrite無しで正解14件。rewriteにより悪化したid: ['f017']
 
 ## followup direct期待ケース（T5完了条件）
 
-rewrite後もdirect経路になるべきfollowup項目: 2/4件が正解
-（誤りid: ['f004', 'f017']）
+rewrite後もdirect経路になるべきfollowup項目: 3/4件が正解
+（誤りid: ['f017']）
 
 ## rewriteレイテンシ（T5完了条件）
 

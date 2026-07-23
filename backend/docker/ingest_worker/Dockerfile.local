@@ -1,0 +1,14 @@
+FROM python:3.13-slim
+ENV PYTHONPYCACHEPREFIX=/tmp/pycache
+
+RUN pip install --no-cache-dir uv
+
+WORKDIR /app
+
+COPY pyproject.toml ./
+RUN uv sync --no-install-project
+
+COPY . .
+RUN uv sync
+
+CMD ["uv", "run", "arq", "private_rag_apps.worker.settings.WorkerSettings", "--watch", "src"]

@@ -1,7 +1,7 @@
 # M8 タスクリスト: Clarify Route (rev.1)
 
 - Spec: `docs/specs/26071715-m8_clarify_route/spec.md` (v0.1)
-- Status: Not started
+- Status: In progress（T0 完了、T1 完了〈clarify件数の目安未達1件はT2へ申し送り〉、T2 着手前）
 - 実行順序: T0 → T1 → T2 →（GO/NO-GO 判定）→ T3 → T4 → T5 → T6
 - 規約: 各タスクは「完了条件をすべて満たす」まで次に進まない。スコープ外の変更を行わない。判断に迷う点はタスク内の「実装ノート」の範囲でのみ裁量を認め、それ以外はスペックに差し戻す
 
@@ -20,10 +20,18 @@
 4. M7 の実装完了状況を確認する（スペック群の存在 ≠ 実装完了。M7 タスクリスト T0 と同じ確認パターン）: `grade`/`generate`/`builder`/`state` が現行スペック（rev.5）通りに実装されていること
 
 **完了条件:**
-- [ ] `grade()` をグラフ実行コンテキスト外から直接呼んでも `RuntimeError` が発生しない（回帰テストを追加）
-- [ ] `make eval-routing --stats-only` の出力が修正前と一致する(既存の集計結果に影響がないこと)
-- [ ] `c038` を再取得でき、`routing_eval_results.jsonl` の該当レコードが `status: "ok"` になる
-- [ ] M7 実装状況の確認結果がタスクノートに記録されている
+- [x] `grade()` をグラフ実行コンテキスト外から直接呼んでも `RuntimeError` が発生しない（回帰テストを追加）
+- [x] `make eval-routing --stats-only` の出力が修正前と一致する(既存の集計結果に影響がないこと)
+- [x] `c038` を再取得でき、`routing_eval_results.jsonl` の該当レコードが `status: "ok"` になる
+- [x] M7 実装状況の確認結果がタスクノートに記録されている
+
+**実装結果（2026-07-22）:**
+- `graph/nodes/grade.py::grade()` の `get_stream_writer()` 呼び出しを `try/except RuntimeError` で no-op writer にフォールバックするよう修正（スペック §6.3 の修正方針通り）
+- 回帰テスト `tests/test_graph_nodes.py::TestGrade::test_callable_outside_langgraph_runnable_context` を追加。`get_stream_writer` を意図的に patch せず `grade()` を直接呼ぶ（`evals/routing.py::retrieve_and_grade()` と同じ呼び出し形）。修正前に `RuntimeError` で red、修正後 green を確認済み
+- `--stats-only` は `process_dataset()`（grade呼び出し経路）を経由しないため、今回の修正の影響を受けないことをコード上確認（`evals/routing.py::main()` 参照）。実行結果も一致
+- `c038` 再取得の過程で **本バグとは無関係の別ブロッカー**を発見: 開発DB(`rag_dev`)が Alembic `0003` のままで、M9で追加された `0004`(`drive_source_fields`)が未適用だった（`UndefinedColumn: sources.source_type`）。`make migrate` で解消。`c038` は再取得後 `status: "ok"`（`route=grounded`, `top_score=0.7695...`, 期待値`grounded`と一致）となり、`make eval-routing` は150件中エラー0件・判定GOで完走した
+- M7実装状況確認: `graph/nodes/grade.py`・`graph/nodes/generate.py`・`graph/state.py`・`graph/builder.py` を確認。いずれもM7スペック(rev.5)通り、2値(grounded/direct)ルーティング・conditional edge・checkpointerなしのステートレス設計が実装済みであることを確認した（M8での変更はこれらに対する追加・拡張として進めてよい）
+- `make lint`（backend: ruff+mypy 0件 / frontend: 既存の無関係な警告2件のみ、biome format差分なし）・`make test`（208 passed）を実行し、回帰がないことを確認
 
 **スコープ外:** `get_stream_writer()` 問題の恒久的な設計解決（writer 注入用の別シームの新設等）。今回は局所的なフォールバックのみで対応する（スペック §6.3）。
 
@@ -45,10 +53,19 @@
 5. calibration / holdout 分割は既存の乱数 seed・層化方式を維持する（re-shuffle しない。既存件数の分割比率が変わらないようにする）
 
 **完了条件:**
-- [ ] `expected_route` が `"grounded" | "direct" | "clarify"` の3値になり、全件がスキーマ通りにパース可能
-- [ ] `clarify` に変更した全件について判断根拠が README に記録されている
-- [ ] clarify 件数が calibration/holdout それぞれに一定数（THETA_HIGH のスコア分布分析に足る件数。目安 10 件以上/split）含まれている
-- [ ] 既存の grounded/direct ラベルに対する変更が、根拠の伴わない移動になっていない（README のレビューで確認）
+- [x] `expected_route` が `"grounded" | "direct" | "clarify"` の3値になり、全件がスキーマ通りにパース可能
+- [x] `clarify` に変更した全件について判断根拠が README に記録されている
+- [ ] clarify 件数が calibration/holdout それぞれに一定数（THETA_HIGH のスコア分布分析に足る件数。目安 10 件以上/split）含まれている **→ 未達（下記実装結果参照。T2への申し送り事項として明示的に残す）**
+- [x] 既存の grounded/direct ラベルに対する変更が、根拠の伴わない移動になっていない（README のレビューで確認）
+
+**実装結果（2026-07-22）:**
+- `ambiguous`(30件)・`followup`(20件)全件を、コーパス4ファイルの読み直し + `routing_eval_results.jsonl` に記録済みの実rerank scoreの両方を突き合わせて再判定した（判断方針の詳細は `routing-README.md` §9.1）。`corpus`/`general`(各40件)は変更していない
+- 実スコア判定の前提として、リランク呼び出し自体が失敗し `top_score: null` のまま `status: "ok"` 記録されていた6件（`a002`, `a007`, `a022`, `f004`, `f007`, `f014`）を、既存の `search_query` を再利用する一度きりのスクリプトで再取得し、実スコアに更新した（`routing-README.md` §9.2）
+- `expected_route: "direct"` → `"clarify"` に変更したのは8件: `a016`, `a017`, `a018`, `a019`, `a020`, `a022`, `a028`, `f017`（根拠は `routing-README.md` §9.3。全件、旧THETA(0.56)を実際に上回っていた=旧2値制で誤ってgroundedと予測されていた実例であることを確認済み）
+- calibration/holdout の分割比率・乱数seedは変更していない（既存レコードの `split` フィールドをそのまま維持し、re-shuffleしていない）
+- clarify件数はcalibration 6件（`a016`,`a017`,`a018`,`a020`,`a022`,`f017`）・holdout 2件（`a019`,`a028`）。目安の「10件以上/split」には届かなかった（特にholdoutが少ない）。既存データセットの再ラベリングのみで判定方針を緩めずに達成できる上限であり、新規質問の追加はスコープ外（本タスクの「スコープ外」参照）。この件数でT2のキャリブレーションが十分かはT2で判断し、不足時は新規`clarify`期待質問の追加要否をT2で検討する（`routing-README.md` §9.5）
+- `a018`(実スコア0.816)は他のclarify候補(0.57〜0.71)より明確に高く、`grounded`側の低スコア実例(`a010`,`a022`とも0.640625)と範囲が重なることを確認した。スコアだけではclarifyとgroundedを完全に分離できない領域が存在する実例として`routing-README.md` §9.4に記録し、T2のTHETA_HIGH検討時に扱いを再検討するよう申し送った
+- `make test`（208 passed。データセット変更はテストに影響しないことを確認）
 
 **スコープ外:** 新規質問の追加作成（既存データセットの再ラベリングのみ。件数が不足する場合のみ T2 のキャリブレーション作業内で追加要否を判断する）。
 

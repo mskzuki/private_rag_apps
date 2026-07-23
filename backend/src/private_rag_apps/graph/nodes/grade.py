@@ -45,7 +45,16 @@ from private_rag_apps.graph.state import GraphState
 
 
 def grade(state: GraphState) -> dict[str, Any]:
-    writer = get_stream_writer()
+    try:
+        writer = get_stream_writer()
+    except RuntimeError:
+        # evals/routing.py::retrieve_and_grade() は grade() を LangGraph の実行
+        # コンテキスト外（Voyage呼び出しペーシング制御のため）から直接呼び出す設計
+        # (docs/specs/26071715-m8_clarify_route/spec.md §6.3)。get_stream_writer() は
+        # 実グラフ実行以外の文脈では RuntimeError を送出するため、no-op writer にフォールバックする。
+        def writer(event: dict[str, Any]) -> None:
+            return None
+
     writer({"event": "node_start", "data": {"node": "grade"}})
 
     theta = settings.routing_theta
