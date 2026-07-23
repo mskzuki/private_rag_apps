@@ -256,6 +256,7 @@ CREATE UNIQUE INDEX sources_external_id_unique_gdrive
 | `DRIVE_SERVICE_ACCOUNT_FILE` | `""` | サービスアカウント JSON キーのファイルパス |
 | `REDIS_URL` | `redis://localhost:6379/0` | ARQ が使用する Redis 接続文字列 |
 | `INGEST_GDRIVE_JOB_MAX_TRIES` | `3` | API 経由トリガの ARQ ジョブ最大試行回数 |
+| `INGEST_GDRIVE_JOB_TIMEOUT_SEC` | `3600` | ARQ ジョブのタイムアウト秒。`worker/tasks.py` が `execute_gdrive_ingestion()` を `asyncio.to_thread()` でオフロードしており、ARQ既定の300秒だと正常進行中のジョブまでタイムアウトになるため延長 |
 | `DRIVE_API_MAX_RETRIES` | `5` | Drive API 呼び出し（`files.list`/`files.get`/`files.export`）失敗時の再試行回数。`google-api-python-client` の `HttpRequest.execute(num_retries=...)` 組み込みの指数バックオフに委譲する（`VOYAGE_MAX_RETRIES` と同じ方針。§4.9/§8 の 429 対策） |
 
 - Drive 機能は**完全にオプトイン**。`DRIVE_FOLDER_ID`/`DRIVE_SERVICE_ACCOUNT_FILE` が空の場合、`make ingest-gdrive`/`POST /api/ingest/gdrive` は明確なエラーで即座に失敗するのみで、既存機能（`make demo` を含む）には一切影響しない

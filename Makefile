@@ -7,7 +7,7 @@ web:
 	cd frontend && pnpm dev
 
 # API経由トリガ（POST /api/ingest/gdrive）のARQジョブを処理するworkerをapiと同じくコンテナで起動する
-# （m9_google_drive_ingestion.md §4.8 v0.5。CLI経由取り込みはこのworkerに依存しない）
+# （m9_google_drive_ingestion.md §4.8 v0.6。CLI経由取り込みはこのworkerに依存しない）
 worker:
 	docker compose up --build ingest_worker
 

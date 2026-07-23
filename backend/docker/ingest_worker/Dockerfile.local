@@ -11,4 +11,4 @@ RUN uv sync --no-install-project
 COPY . .
 RUN uv sync
 
-CMD ["uv", "run", "arq", "private_rag_apps.worker.settings.WorkerSettings", "--watch", "src"]
+CMD ["uv", "run", "arq", "private_rag_apps.worker.settings.WorkerSettings"]

@@ -17,3 +17,8 @@ class WorkerSettings:
     # API経由トリガのARQジョブ最大試行回数（既定3。worker/tasks.pyのリトライ排他ロジックと
     # 同じ設定値を参照するため、job関数側でも `settings.ingest_gdrive_job_max_tries` を直接読む）
     max_tries = settings.ingest_gdrive_job_max_tries
+    # ARQ既定のjob_timeout（300秒）は実際のDrive取り込み（埋め込みAPIのレート制限ペーシング等を
+    # 含む）には短すぎるため延長する（既定3600秒。tasks.pyがexecute_gdrive_ingestion()を
+    # asyncio.to_thread()でオフロードしたことでjob_timeoutが実際にキャンセルとして機能するように
+    # なったため、短いままだと正常進行中のジョブまでタイムアウト扱いされてしまう）
+    job_timeout = settings.ingest_gdrive_job_timeout_sec
