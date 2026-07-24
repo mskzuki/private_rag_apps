@@ -11,14 +11,9 @@ services:
       - POSTGRES_DB=rag_dev
     volumes:
       - db_data:/var/lib/postgresql/data
-      # 初回起動(空ボリューム)時のみ実行される初期化スクリプト。rag_dev(POSTGRES_DBで作成済み)に加え、
-      # テスト専用DB rag_test をここで作成する(docs/architecture.md §9)
+      # 初回起動時のみ実行される初期化スクリプト。rag_devに加え、テスト専用DB rag_testをここで作成
       - ./backend/docker/db/initdb:/docker-entrypoint-initdb.d:ro
 
-  # M9: API経由トリガのDrive取り込みジョブ（POST /api/ingest/gdrive）をARQ経由で処理するために使う。
-  # Drive機能を使わない場合でも起動して問題ない（他サービスから未接続でも単体で正常起動する）。
-  # ポート公開はhostからのデバッグ用（redis-cli等）。api/ingest_workerコンテナはcompose内部ネットワーク経由でredisサービス名で到達する
-  # （AGENTS.md §2のジョブキュー導入禁止に対するM9限定の例外。§3.3参照）
   redis:
     image: redis:7-alpine
     ports:
@@ -33,20 +28,24 @@ services:
     env_file:
       - backend/.env
     environment:
-      - DATABASE_URL=postgresql+psycopg://rag_user:rag_pass@db:5432/rag_dev
-      # apiコンテナはcompose内部ネットワーク経由でredisサービス名で到達する。
+      # .envのDB_HOST既定値(localhost)はコンテナ外(ホストでの単体実行)用であり、
+      # コンテナ内からのlocalhostはapiコンテナ自身を指してしまうため上書きが必須（DB_PORT/DB_USER/DB_PASS/DB_NAMEは.envの値をそのまま使う）
+      - DB_HOST=db
       # REDIS_URLの既定値(redis://localhost:6379/0)はコンテナ外(ホストでの単体実行)用であり、
       # コンテナ内からのlocalhostはapiコンテナ自身を指してしまうため上書きが必須（dbと同じパターン）
       - REDIS_URL=redis://redis:6379/0
     volumes:
-      - ./seed:/app/seed
+      - ./backend/seed:/app/seed
       - ./backend/src:/app/src
+      # Devcontainerからこのapiコンテナにアタッチしてテストを編集・実行する際に必要
+      - ./backend/tests:/app/tests
+      # make ingest-gdriveをこのサービス経由（docker compose run）で実行する際にDRIVE_SERVICE_ACCOUNT_FILEを読むため必要
+      - ./backend/secrets:/app/secrets
     depends_on:
       - db
       - redis
 
-  # M9: `POST /api/ingest/gdrive` がenqueueしたGoogle Drive取り込みジョブを処理するARQ worker。
-  # apiと同じくコンテナ起動（docs/specs/26071710-m9_google_drive_ingestion/spec.md §4.8 v0.6）
+  # `POST /api/ingest/gdrive`がenqueueしたGoogle Drive取り込みジョブを処理するARQ worker。
   ingest_worker:
     build:
       context: ./backend
@@ -54,7 +53,8 @@ services:
     env_file:
       - backend/.env
     environment:
-      - DATABASE_URL=postgresql+psycopg://rag_user:rag_pass@db:5432/rag_dev
+      # DB_HOST/REDIS_URLの上書き理由はapiサービスと同じ（.envの既定値はホスト単体実行用のため）
+      - DB_HOST=db
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./backend/src:/app/src

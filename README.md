@@ -27,6 +27,10 @@
 
 `GET http://localhost:8000/health` または `POST http://localhost:8000/api/chat` で疎通確認が可能です。データ管理画面（ソース一覧・再取り込み・インデックス初期化）は `http://localhost:3000/sources` から利用できます。
 
+### VS Code Devcontainer で開発する場合（任意・backendのみ）
+
+`backend/`（FastAPI）だけを対象にした VS Code Dev Container を用意しています。`make setup` 完了後、VS Code でこのリポジトリを開き「Reopen in Container」を実行すると、`docker-compose.yml` の既存 `api` サービス（`make api` が使うコンテナそのもの）にエディタがアタッチされ、`backend/src`/`backend/tests` の編集がそのまま反映されます。frontend（`frontend/`）はこの Devcontainer の対象外で、引き続きホストで `make web`（`pnpm dev`）を実行してください。git 操作や `make` コマンドはコンテナ内では使えないため、ホスト側のターミナルで行ってください。設計判断の詳細は [docs/specs/26072417-backend_devcontainer/spec.md](docs/specs/26072417-backend_devcontainer/spec.md) を参照してください。`make setup` / `make api` によるホスト実行が引き続き主経路であり、この Devcontainer は任意の追加手段です。
+
 ### 自分の文書を取り込みたい場合
 
 `make demo` は常に `seed/corpus` を取り込み対象にします（`.env` の `CORPUS_DIR` を上書きしても影響を受けません）。自分の文書を試したい場合は次の手順で切り替えてください。
@@ -51,7 +55,7 @@
    - 名前は任意（例: `private-rag-apps-gdrive`）。プロジェクトへのロール付与は不要（Drive フォルダ側の共有だけでアクセスできる）
 3. **JSON キーを作成しダウンロードする**
    - 作成したサービスアカウントの詳細画面 →「鍵」タブ →「鍵を追加」→「新しい鍵を作成」→ 形式は JSON を選択
-   - ダウンロードした JSON ファイルは**リポジトリにコミットしない**。`.gitignore` 対象のローカルパスに保存する。**`make worker`（後述）は docker コンテナとして起動するため、`backend/secrets/`（`docker-compose.yml` でコンテナにバインドマウント済み）配下に保存する必要がある**（例: `backend/secrets/gdrive-service-account.json`）
+   - ダウンロードした JSON ファイルは**リポジトリにコミットしない**。`.gitignore` 対象のローカルパスに保存する。**`make worker`/`make ingest-gdrive`（後述）はいずれも docker コンテナ経由で実行するため、`backend/secrets/`（`docker-compose.yml` でコンテナにバインドマウント済み）配下に保存する必要がある**（例: `backend/secrets/gdrive-service-account.json`）
 4. **`backend/.env` に設定する**
    - `DRIVE_SERVICE_ACCOUNT_FILE=` に手順3で保存した JSON ファイルの `backend/` からの相対パス（例: `secrets/gdrive-service-account.json`）を設定する
    - `DRIVE_FOLDER_ID=` に取り込み対象フォルダの Drive ID を設定する（フォルダを Google Drive で開いたときの URL 末尾の ID 部分。例: `https://drive.google.com/drive/folders/1AbCDefGhIJKlmnOPQrstuVWxyz` なら `1AbCDefGhIJKlmnOPQrstuVWxyz`）

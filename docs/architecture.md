@@ -307,12 +307,13 @@ sequenceDiagram
 ## 9. 設定とシークレット
 
 - `core/config.py`（pydantic-settings）で一元管理。値のハードコード禁止
-- 必須キー: `OPENAI_API_KEY` / `VOYAGE_API_KEY` / `DATABASE_URL` / `CORPUS_DIR`（`LANGFUSE_*` は**任意**・未設定時は計装 no-op。§8）
+- 必須キー: `OPENAI_API_KEY` / `VOYAGE_API_KEY` / `DB_HOST`・`DB_PORT`・`DB_USER`・`DB_PASS`・`DB_NAME`（まとめてDB接続情報を構成。`DATABASE_URL` を明示指定した場合はそちらが優先される） / `CORPUS_DIR`（`LANGFUSE_*` は**任意**・未設定時は計装 no-op。§8）
 - 増分再取り込み関連（すべて任意・既定値あり）: `INGEST_DELETE_GUARD_RATIO` / `INGEST_ADVISORY_LOCK_KEY` / `INGEST_STALE_RUNNING_SEC` / `INGEST_STATS_FLUSH_EVERY` / `INGEST_EMBED_BATCH_SIZE`
 - **Google Drive 取り込み関連（M9・すべて任意・既定値あり。`DRIVE_FOLDER_ID`/`DRIVE_SERVICE_ACCOUNT_FILE` が空なら Drive 機能は完全に無効）**: `DRIVE_FOLDER_ID`（既定 `""`）/ `DRIVE_SERVICE_ACCOUNT_FILE`（既定 `""`）/ `REDIS_URL`（既定 `redis://localhost:6379/0`。ARQ が使用する Redis 接続文字列） / `INGEST_GDRIVE_JOB_MAX_TRIES`（既定 3。API 経由トリガの ARQ ジョブ最大試行回数） / `DRIVE_API_MAX_RETRIES`（既定 5。Drive API 呼び出し失敗時の再試行回数。`google-api-python-client` 組み込みの exponential backoff に委譲。`VOYAGE_MAX_RETRIES` と同じ方針）
 - **DB 環境の分離（開発 vs テスト）**: 開発・デモ用に `rag_dev`、自動テスト用に `rag_test` を、同一 PostgreSQL インスタンス内の別データベースとして作成し運用する。`docker-compose.yml` の `db` サービスは `POSTGRES_DB=rag_dev` で起動し、初回起動（空ボリューム）時のみ `backend/docker/db/initdb/01_create_rag_test.sql`（`docker-entrypoint-initdb.d` にマウント）が `rag_test` を追加作成する。
   - **背景**: `backend/tests/` にはテスト用 DB を強制する仕組み（`conftest.py` 等）が無く、`DATABASE_URL` の分離を怠ったまま `make test` を実行すると、`DELETE /api/index`（§7、`api/main.py: reset_index`。`sources`/`chunks` を無条件全削除）を呼ぶテストや、取り込みテストの全置換ロジックが実 DB のデータを消してしまう。この事故が M5・M6 で計2回発生した。
   - **実装**: `make test`（Makefile）が `DATABASE_URL` を `rag_test` に固定してから `pytest` を起動するため、`.env` の設定に関わらずテストが `rag_dev` に触れることはない（`conftest.py` 等の新規抽象化はせず、既存の `demo:` ターゲット同様に Makefile 側で環境変数を上書きする形で実装。M6局所化の方針に合わせ過剰な抽象化を避けた）。`core/config.py` の既定値・`.env.example`・`docker-compose.yml` の `api` サービスはいずれも `rag_dev` を指す。
+  - **docker-compose 経由の接続先切り替え**: `.env` の `DB_HOST` 既定値 `localhost` はネイティブ実行（`make api` 等）向けであり、コンテナ内からは自分自身を指してしまうため、`docker-compose.yml` の `api`/`ingest_worker` サービスは `DB_HOST=db`（compose 内サービス名）のみを上書きする。`DB_PORT`/`DB_USER`/`DB_PASS`/`DB_NAME` は `.env` の値をそのまま使う（`core/config.py` が `database_url` 未指定時にこれらから接続文字列を組み立てる）。
 
 ---
 

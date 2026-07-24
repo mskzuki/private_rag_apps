@@ -169,12 +169,20 @@
 - **追記（2026-07-22）**: `docker-compose.yml`/Dockerfile 上のサービス名は `worker` ではなく `ingest_worker` とした（`docker-compose.yml` 単体で見た際に何を処理するサービスか分かりにくいというユーザーフィードバックを受けた命名変更。`backend/docker/ingest_worker/Dockerfile.local`）。`make worker`（Makefile ターゲット名）・`private_rag_apps.worker`（Python パッケージ名）は既存ドキュメント全体で確立済みの名称のため変更していない。
 - **詳細**: [docs/specs/26071710-m9_google_drive_ingestion/spec.md §4.8（v0.6）](docs/specs/26071710-m9_google_drive_ingestion/spec.md#48-cli--api-コマンド設計)
 
+### backend Makefile ターゲットのコンテナ経由への統一
+
+- **決定**: `Makefile` の `migrate`/`ingest`/`demo`/`ingest-gdrive`/`test`/`lint`/`fmt`/`eval`/`eval-no-cache`/`eval-routing` を、ホスト直接の `cd backend && uv run ...` から `docker compose run --rm --build api ...` 経由のコンテナ実行に変更する。`lint`/`fmt`はDB/Redis非依存のため`--no-deps`を付与し、無駄な依存サービス起動を避ける。`test`は接続文字列全体ではなく`-e DB_NAME=rag_test`のみを上書きする（`DATABASE_URL`のDB_HOST/DB_PORT/DB_USER/DB_PASS/DB_NAME分解の効果）。`setup`（ホスト側IDE用`.venv`構築が目的）と`openapi`（DB/Redis非依存のコード生成。コンテナ化すると`--rm`で生成物が消える）は対象外。
+- **背景/代替案**: `make api`/`make worker`は既にコンテナ経由だったが、他のbackendターゲットはホストの`uv`/Python直接実行のままという非対称が残っていた（[make workerのコンテナ起動化](#make-worker-のコンテナ起動化ホスト直接起動からの方針転換)と同根の課題）。
+- **根拠**: ユーザーから改めて「バックエンドはdockerを使わず直接起動している箇所をdocker経由に統一してほしい」という明示の指示があり、`make worker`だけでなく残り全ての実行系ターゲットに適用した。ホスト側に`uv`/Python 3.13が無くても`docker`/`make`さえあれば全コマンドが`Dockerfile.local`ビルド時と同じ環境で動くようになる。CI（`.github/workflows/eval.yml`）は`make`を呼ばず`uv run`を直接叩くため、この変更による影響はない。
+- **詳細**: [architecture.md §9](architecture.md#9-設定とシークレット) / [docs/specs/26072417-backend_devcontainer/spec.md §3.2 追記](docs/specs/26072417-backend_devcontainer/spec.md#32-既知の問題1-make-test-のホスト名ハードコード)（旧`DB_HOST`変数の撤去経緯）
+
 ---
 
 ## 変更履歴
 
 | version | 日付 | 変更 |
 |---|---|---|
+| v0.8 | 2026-07-25 | backend Makefileターゲット（migrate/ingest/demo/ingest-gdrive/test/lint/fmt/eval系）のコンテナ経由への統一を追加（`make worker`のコンテナ起動化と同根の判断を残り全ターゲットに適用） |
 | v0.7 | 2026-07-22 | worker のコンテナ起動化決定に、compose上のサービス名を `ingest_worker` にした追記（Makefileターゲット名・Pythonパッケージ名とは別の命名判断）を追加 |
 | v0.6 | 2026-07-21 | `make worker` をホスト直接起動から docker コンテナ起動に変更した判断（当初のコンテナ化見送り判断の上書き）を追記 |
 | v0.5 | 2026-07-17 | M9（Google Drive フォルダ取り込み）スペック起票に伴い、サービスアカウント認証・identity key の一般化・ARQ/Redis を API 経由トリガに限定する判断を追記 |

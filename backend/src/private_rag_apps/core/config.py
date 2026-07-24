@@ -1,6 +1,7 @@
 import os
-from typing import Literal
+from typing import Literal, Self
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,7 +21,13 @@ class Settings(BaseSettings):
     langfuse_public_key: str = ""  # Langfuse 公開鍵（任意。未設定なら計装は no-op）
     langfuse_secret_key: str = ""  # Langfuse 秘密鍵（任意。未設定なら計装は no-op）
     langfuse_host: str = ""  # Langfuse 送信先ホスト
-    database_url: str = "postgresql+psycopg://rag_user:rag_pass@localhost:5432/rag_dev"  # PostgreSQL(pgvector+pg_bigm)接続文字列。開発/デモ用DB（テストは rag_test を使う。docs/architecture.md §9）
+    # PostgreSQL(pgvector+pg_bigm)接続情報。開発/デモ用DB（テストは rag_test を使う。docs/architecture.md §9）
+    db_host: str = "localhost"  # ネイティブ実行(make api等)向け既定値。docker-composeのapi/ingest_workerサービスはdb（サービス名）に上書きする
+    db_port: int = 5432
+    db_user: str = "rag_user"
+    db_pass: str = "rag_pass"
+    db_name: str = "rag_dev"
+    database_url: str = ""  # 明示指定時はdb_*より優先。Makefileのtestターゲット・CI・移行テストでのdbname差し替え等に使用（既定は空でdb_*から自動生成）
     corpus_dir: str = "seed/corpus"  # 取り込み対象コーパス（Markdown/テキスト）のディレクトリ
     llm_model: str = ""  # 回答生成に使う OpenAI モデル
     embed_model: str = ""  # 埋め込みに使う Voyage モデル（ingestion/retrieval で共有）
@@ -79,6 +86,15 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def _build_database_url(self) -> Self:
+        if not self.database_url:
+            self.database_url = (
+                f"postgresql+psycopg://{self.db_user}:{self.db_pass}"
+                f"@{self.db_host}:{self.db_port}/{self.db_name}"
+            )
+        return self
 
 
 settings = Settings()

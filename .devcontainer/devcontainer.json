@@ -1,0 +1,71 @@
+// backend専用のVS Code Devcontainer設定。
+// 新しいComposeサービスは作らず、docker-compose.ymlに既存のapiサービス（make apiが使うコンテナ）に
+// そのままアタッチするだけ。frontend（Node/pnpm）はこのdevcontainerの対象外で、
+// 引き続きホストでpnpm dev（make web）を実行する。
+// 既知の制約: .gitはマウントされないためgit操作は機能しない。make/ルートMakefileも/app配下には無いため
+// 使えない（devcontainer内ではuv run pytest等を直接使う）。設計判断の詳細・根拠:
+// docs/specs/26072417-backend_devcontainer/spec.md
+{
+  "name": "private-rag-apps-backend (api)",
+
+  // 新規サービスを追加せず、既存のapiサービスにそのままアタッチする
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "api",
+
+  // apiサービスのWORKDIRかつ既存マウント（seed/src/tests）の着地先。
+  // 注意: .git はここにはマウントされない（spec.md §3.5の既知の制約参照）
+  "workspaceFolder": "/app",
+
+  // falseにして、Dockerfile.localのCMD（uvicorn --reload）をVS Code既定のsleep infinityで
+  // 上書きしない。make api実行時と全く同じプロセスがフォアグラウンドで動き続ける
+  "overrideCommand": false,
+
+  // VS Codeが切断する際、このdevcontainerが起動したサービス（api/db/redis）を停止する
+  // （db_dataボリューム自体は削除されない）。ingest_worker実行中の相互作用に注意（spec.md §3.4）
+  "shutdownAction": "stopCompose",
+
+  "features": {
+    // python:3.13-slimベースのイメージにgitが無いため追加（共有Dockerfile.localは変更しない）
+    "ghcr.io/devcontainers/features/git:1": {},
+    // curl/less/procps/sudo等の基本CLIツールも無いため追加
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": false,
+      "upgradePackages": false
+    }
+  },
+
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "FastAPI (uvicorn --reload)",
+      "onAutoForward": "notify"
+    }
+  },
+
+  // make testのDB接続先をlocalhostからdbサービス名へ切り替える（Makefile側のDB_HOST変数と対）。
+  // 統合ターミナル・タスク・デバッガにのみ効かせるためcontainerEnvではなくremoteEnvを使う
+  "remoteEnv": {
+    "DB_HOST": "db"
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "ms-python.mypy-type-checker"
+      ],
+      "settings": {
+        // uvがイメージビルド時に作成するvenvの場所（backend/docker/api/Dockerfile.local参照）
+        "python.defaultInterpreterPath": "/app/.venv/bin/python",
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff",
+          "editor.formatOnSave": true,
+          "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit"
+          }
+        }
+      }
+    }
+  }
+}
